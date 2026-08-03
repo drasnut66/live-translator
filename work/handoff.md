@@ -13,6 +13,9 @@ Date: 2026-08-03
 - Downloaded and checksum-recorded the quantized Whisper and Silero VAD models.
 - Added `scripts/transcribe_media.sh` and completed a full-file Japanese ASR run.
 - Added the Rust stable-prefix coordinator with regression and duplicate protection.
+- Added incremental `s16le` PCM frame assembly, bounded queue accounting, and a
+  cross-platform FFmpeg source that reads files and network streams without creating
+  intermediate WAV files.
 - Added the Tauri 2 + React desktop overlay and connected it to Rust runtime status.
 
 ## Environment status
@@ -27,11 +30,10 @@ Date: 2026-08-03
 
 ## Next executable tasks
 
-1. Add an incremental FFmpeg PCM source for local files and network streams.
-2. Add the long-lived whisper.cpp FFI worker and bounded audio ring buffer.
-3. Feed ASR revisions through the stable-prefix coordinator into Tauri events.
-4. Implement the OpenAI-compatible translation provider with cancellation and timeout.
-5. Add microphone capture, then isolate WASAPI and ScreenCaptureKit system-audio adapters.
+1. Add the long-lived whisper.cpp FFI worker and connect it to the bounded audio queue.
+2. Feed ASR revisions through the stable-prefix coordinator into Tauri events.
+3. Implement the OpenAI-compatible translation provider with cancellation and timeout.
+4. Add microphone capture, then isolate WASAPI and ScreenCaptureKit system-audio adapters.
 
 ## Current blockers
 

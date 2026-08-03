@@ -7,9 +7,10 @@ overlay. It combines a Tauri 2 desktop UI with a local Whisper backend and a plu
 translation provider. The codebase is intentionally small and keeps large models,
 platform binaries, and build caches outside Git.
 
-> Current status: the desktop overlay, local Japanese ASR smoke test, and stable-prefix
-> streaming core are implemented. The long-lived live audio worker and network
-> translation call are the next milestone; the Chinese line in the UI is fixture data.
+> Current status: the desktop overlay, incremental FFmpeg PCM source, local Japanese
+> ASR smoke test, and stable-prefix streaming core are implemented. The long-lived
+> whisper.cpp worker and network translation call are the next milestone; the Chinese
+> line in the UI is still fixture data.
 
 ## Features in this milestone
 
@@ -18,6 +19,8 @@ platform binaries, and build caches outside Git.
 - Audio source selector UI for browser, system audio, and microphone paths.
 - Pause, subtitle history, provider selection, and opacity controls.
 - whisper.cpp + Metal local ASR smoke test with Silero VAD.
+- Incremental FFmpeg source for files, HLS/RTSP URLs, and other FFmpeg inputs.
+- 20 ms PCM frame assembly and bounded audio queue with dropped-frame accounting.
 - Token-prefix stability coordinator with duplicate and regression protection.
 - GitHub Actions checks the core on macOS, Windows, and Linux, with full desktop checks
   on macOS and Windows.
@@ -104,7 +107,9 @@ Windows. Never commit API keys or model binaries.
 
 The script probes the actual container, decodes the first audio stream to 16 kHz mono,
 and writes text/SRT/JSON next to the repository-level working notes. It does not yet
-represent the live streaming worker.
+represent the live streaming worker. The native FFmpeg source in
+`desktop/src-tauri/src/audio/ffmpeg.rs` performs the same decode incrementally and is
+the input boundary for the upcoming ASR worker.
 
 ## Translation providers
 

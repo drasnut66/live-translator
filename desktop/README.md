@@ -24,7 +24,8 @@ On Windows PowerShell, use `..\scripts\download_models.ps1`. Set
 builds use the platform app-data directory unless that variable is set.
 
 The current subtitle text is deterministic sample data from the local media smoke test.
-Live audio and translation API wiring are the next implementation stage.
+The Tauri backend now contains an incremental FFmpeg PCM source; live ASR and
+translation API wiring are the next implementation stage.
 
 The release workflow builds macOS arm64, macOS x64, and Windows x64 bundles from this
 directory. Signing and notarization are intentionally left to the maintainer's secrets.

@@ -5,6 +5,7 @@
 ```text
 audio source
   -> 16 kHz mono PCM
+  -> 20 ms frame assembler
   -> bounded ring buffer
   -> Silero VAD
   -> whisper.cpp decode
@@ -29,9 +30,9 @@ native build.
 2. Microphone: cross-platform capture through a Rust audio backend.
 3. Windows system audio: WASAPI loopback adapter.
 4. macOS system audio: ScreenCaptureKit adapter.
-5. FFmpeg URL/file input for HLS, RTSP, and local media. The first offline media
-   adapter is available through `scripts/transcribe_media.sh`; incremental feeding is
-   still pending.
+5. FFmpeg URL/file input for HLS, RTSP, and local media. The script remains the
+   offline smoke-test path; `desktop/src-tauri/src/audio/ffmpeg.rs` is the incremental
+   source used by the native runtime.
 
 Every adapter emits the same `AudioFrame` contract. The rest of the application must
 not branch on the operating system.
@@ -78,6 +79,8 @@ optional. API keys are stored in the OS credential store, not in SQLite or JSON.
 
 ## Current implementation boundary
 
-The media decoder, local whisper.cpp runtime, Silero VAD, stable-prefix core, and Tauri
-overlay have been verified. The Chinese line is still fixture data. No API key is read
-and no network translation request is made in the current milestone.
+The incremental PCM contract, bounded queue, media decoder, local whisper.cpp runtime,
+Silero VAD, stable-prefix core, and Tauri overlay have been verified. The Chinese line
+is still fixture data. No API key is read and no network translation request is made in
+the current milestone. The next boundary is a long-lived whisper.cpp worker that
+consumes `FfmpegPcmSource::next_frame()` without relaunching a CLI process per chunk.

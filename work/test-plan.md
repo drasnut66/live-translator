@@ -17,6 +17,9 @@ Status: completed for the full 356.08-second test file. See
 
 ## Streaming checks
 
+- Arbitrary FFmpeg stdout read boundaries produce exact 20 ms, 16 kHz mono frames.
+- A final partial frame flushes complete samples and ignores a truncated byte.
+- A full audio queue drops the oldest frame and increments its drop counter.
 - First partial subtitle latency.
 - Stable Japanese commit latency.
 - Chinese translation latency.

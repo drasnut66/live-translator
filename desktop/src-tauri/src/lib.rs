@@ -3,6 +3,8 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
+pub mod audio;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeStatus {
