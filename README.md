@@ -10,8 +10,8 @@ platform binaries, and build caches outside Git.
 > Current status: the desktop overlay, incremental FFmpeg PCM source, in-process
 > long-lived whisper.cpp engine, stable-prefix streaming core, managed Tauri session, and
 > asynchronous OpenAI-compatible translation worker are implemented. Silero VAD now
-> closes utterances on detected silence; microphone/system-audio capture is the next
-> milestone.
+> closes utterances on detected silence, and microphone and system-audio capture feed the
+> same native session on their supported platforms.
 
 ## Features in this milestone
 
@@ -22,6 +22,10 @@ platform binaries, and build caches outside Git.
 - whisper.cpp + Metal local ASR smoke test with Silero VAD.
 - Incremental FFmpeg source for files, HLS/RTSP URLs, and other FFmpeg inputs.
 - 20 ms PCM frame assembly and bounded audio queue with dropped-frame accounting.
+- CPAL microphone capture with device selection, native-format conversion, mono downmix,
+  anti-aliased 16 kHz resampling, and a bounded five-second capture queue.
+- ScreenCaptureKit system-audio capture on macOS 13+ with display selection and a bounded
+  native capture queue; WASAPI render-loopback capture on Windows.
 - Statically linked whisper.cpp engine with Metal on macOS and CPU fallback on Windows.
 - Token-prefix stability coordinator with duplicate and regression protection.
 - Managed Tauri session events for streaming Japanese partials and commits.
@@ -44,8 +48,8 @@ audio adapter
 ```
 
 The same Tauri/React shell is used on both desktop platforms. Platform-specific audio
-capture is isolated behind one internal frame contract: browser-tab capture first,
-microphone next, then WASAPI loopback on Windows and ScreenCaptureKit on macOS.
+capture is isolated behind one internal frame contract. Media, microphone, and system-audio
+sources are implemented; browser-tab capture remains a separate next step.
 
 ## Repository layout
 
@@ -138,24 +142,59 @@ cargo run --manifest-path desktop/src-tauri/Cargo.toml --example vad_probe -- \
   models/ggml-silero-v6.2.0.bin /path/to/japanese-video.mp4 30
 ```
 
+### Microphone probe
+
+This probe enumerates input devices and verifies the 16 kHz mono frame path without
+loading Whisper. The first argument is the capture duration; an optional second argument
+is a device ID printed by the probe:
+
+```sh
+cargo run --manifest-path desktop/src-tauri/Cargo.toml --example microphone_probe -- 3
+```
+
+macOS asks for microphone permission on first use. Packaged builds include the required
+`NSMicrophoneUsageDescription`; Windows uses the same CPAL adapter and device contract.
+
+### System-audio probe
+
+The system-audio probe verifies the same 16 kHz mono frame path without loading Whisper:
+
+```sh
+cargo run --manifest-path desktop/src-tauri/Cargo.toml --example system_audio_probe -- 3
+```
+
+On macOS 13 or newer, select a display and grant Screen Recording permission when macOS asks.
+The application excludes its own output to avoid feedback. On Windows, the optional second
+argument is the WASAPI render-endpoint ID printed by the probe.
+
 ## Translation providers
 
-The current provider is an OpenAI-compatible `/v1/chat/completions` client. It runs in a
-separate bounded worker, uses a request timeout, and accepts compatible gateways such as
-local OpenAI-compatible servers by changing the endpoint. Configure it in the environment
-before starting the desktop app:
+OpenAI-compatible and DeepL providers run in the same separate bounded worker and use a
+request timeout. OpenAI-compatible gateways can be selected by changing the endpoint; DeepL
+defaults to the free API endpoint and also accepts a custom endpoint for Pro accounts. Open
+the overlay settings to select a provider and set its endpoint and API key. The OpenAI
+provider also exposes its model field.
+
+Keys are written directly to macOS Keychain or Windows Credential Manager and are never
+returned to the webview, placed in JSON settings, or written to SQLite. Endpoint and model
+are stored in the application data directory and take effect when the next recognition
+session starts.
+
+Development builds can still use environment variables before a key has been saved in the
+credential store:
 
 ```sh
 export LIVE_TRANSLATOR_API_KEY="..."
 export LIVE_TRANSLATOR_API_URL="https://api.openai.com/v1/chat/completions"
 export LIVE_TRANSLATOR_MODEL="gpt-4o-mini"
+# Optional DeepL fallback when the selected provider is DeepL.
+export LIVE_TRANSLATOR_DEEPL_API_KEY="..."
 ```
 
 Optional `LIVE_TRANSLATOR_SYSTEM_PROMPT` and `LIVE_TRANSLATOR_TIMEOUT_MS` are supported.
 When the key is absent, the app remains local-only and shows `等待翻译` for committed
-lines. API keys are not stored in Git, JSON settings, or SQLite; OS credential-store
-integration is still planned for packaged builds. DeepL and local NLLB providers can be
-added behind the same worker contract later.
+lines. A saved OS credential takes precedence over the matching environment variable. Local
+NLLB providers can be added behind the same worker contract later.
 
 ## Cross-platform release
 
@@ -166,9 +205,9 @@ initial target.
 
 The macOS overlay enables Tauri's `macOSPrivateApi` because true transparent windows
 need it. This is suitable for personal side-loading but is not compatible with Mac App
-Store submission. The minimum macOS version is 10.15 because the statically linked
-whisper.cpp runtime uses C++ filesystem APIs introduced there. Windows uses the same
-source tree and does not require the private API.
+Store submission. The minimum macOS version is 13.0 because ScreenCaptureKit system-audio
+capture is available from that release. Windows uses the same source tree and does not
+require the private API.
 
 ## License and references
 

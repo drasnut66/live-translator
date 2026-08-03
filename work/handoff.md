@@ -29,6 +29,31 @@ Date: 2026-08-03
   on silence and a 15-second fallback for continuous speech.
 - Verified four VAD endpoints in the first 30 seconds of `1.flv` using
   `examples/vad_probe.rs`.
+- Added cross-platform CPAL microphone capture with input-device enumeration, native sample
+  conversion, channel downmix, Rubato FFT resampling to 16 kHz, 20 ms frames, and a bounded
+  five-second raw capture queue.
+- Connected microphone selection and session start to the Tauri overlay, and added the
+  macOS microphone usage description required for packaged permission prompts.
+- Verified a two-second capture from the MacBook Air microphone: 2000 ms of PCM, peak
+  0.0185, and zero dropped native samples.
+- Replaced the CPAL output-device placeholder with platform system-audio adapters behind the
+  common `AudioFrameSource`: ScreenCaptureKit on macOS 13+ and WASAPI render loopback on
+  Windows. Both paths enter the existing 48-to-16 kHz processing and bounded queue contract.
+- Added the macOS Screen Recording usage description and changed the packaged macOS baseline
+  to 13.0, which is required by ScreenCaptureKit system-audio capture.
+- Ran the macOS system-audio probe against the built-in display for 5 seconds while playing a
+  20-second 880 Hz fixture: it emitted 5000 ms with zero dropped samples but `peak=0.0000`.
+  The command-line executable still needs an explicit Screen Recording grant, or validation
+  must run through the packaged Live Translator app, before this can count as non-silent proof.
+- Added OpenAI-compatible provider settings to the overlay. Endpoint and model persist in the
+  application data directory; API keys write only to macOS Keychain or Windows Credential
+  Manager and are never returned to the webview or written to JSON.
+- Kept `LIVE_TRANSLATOR_API_*` environment variables as the development fallback. A stored
+  credential takes precedence when a recognition session creates its translation worker.
+- Added a DeepL provider to the same bounded translation worker. It uses a separate credential
+  account, sends `POST /v2/translate` JSON with the `DeepL-Auth-Key` header, and targets `ZH`.
+- Assessed local NLLB/CTranslate2 availability: no runtime package or model assets are present
+  in this workspace, so local-provider integration remains a model-distribution decision.
 
 ## Environment status
 
@@ -38,22 +63,23 @@ Date: 2026-08-03
 - FFmpeg 8.1.2 is available.
 - whisper.cpp was built with Metal in the local development checkout.
 - `ggml-large-v3-turbo-q5_0.bin` and `ggml-silero-v6.2.0.bin` are present.
-- Core tests, the production web build, and the Tauri Rust check pass.
+- Core tests, the production web build, and the Tauri Rust check pass. System-audio hardware
+  validation remains pending on both platforms.
 
 ## Next executable tasks
 
-1. Add microphone capture behind the shared 16 kHz mono frame contract.
-2. Isolate WASAPI and ScreenCaptureKit system-audio adapters behind that same contract.
-3. Move API keys into the OS credential store and expose provider settings in the UI.
-4. Add DeepL and local NLLB/CTranslate2 providers behind the same translation worker.
+1. Grant Screen Recording permission and verify the macOS system-audio probe with audible
+   output; run the equivalent WASAPI hardware probe on Windows.
+2. Evaluate a local NLLB/CTranslate2 runtime and model distribution strategy.
+3. Run a 30-minute microphone/session soak test and record latency, memory, and drop counts.
 
 ## Current blockers
 
 There is no active toolchain blocker. The media-input pipeline, managed session,
 VAD-driven segmentation, Tauri events, and optional API translation are connected. The
-remaining functional gap is live device capture. The `.flv` extension is misleading;
-FFmpeg identifies `1.flv` as MP4/MOV, so all media paths must continue to probe content
-rather than trust the suffix.
+remaining audio-source gap is browser-tab capture. The `.flv` extension is misleading; FFmpeg
+identifies `1.flv` as MP4/MOV, so all media paths must continue to probe content rather than
+trust the suffix.
 
 The macOS transparent Tauri window enables `macOSPrivateApi`; this is acceptable for
 personal side-loading but incompatible with Mac App Store submission.

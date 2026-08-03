@@ -10,7 +10,9 @@ import {
   Minus,
   Pause,
   Play,
+  Save,
   Settings2,
+  Trash2,
   Unlock,
   X,
 } from "lucide-react";
@@ -57,6 +59,21 @@ type TranslationPayload = {
   textZh: string;
 };
 
+type TranslationSettings = {
+  provider: string;
+  endpoint: string;
+  model: string;
+  apiKeyConfigured: boolean;
+  apiKeyStoredInCredentialStore: boolean;
+  credentialStoreAvailable: boolean;
+};
+
+type AudioDevice = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+};
+
 type HistoryEntry = {
   time: string;
   japanese: string;
@@ -76,13 +93,34 @@ const defaultStatus: RuntimeStatus = {
   whisperReady: false,
 };
 
+const defaultTranslationSettings: TranslationSettings = {
+  provider: "openai-compatible",
+  endpoint: "https://api.openai.com/v1/chat/completions",
+  model: "gpt-4o-mini",
+  apiKeyConfigured: false,
+  apiKeyStoredInCredentialStore: false,
+  credentialStoreAvailable: true,
+};
+
+function defaultEndpointForProvider(provider: string) {
+  return provider === "deepl"
+    ? "https://api-free.deepl.com/v2/translate"
+    : "https://api.openai.com/v1/chat/completions";
+}
+
 function App() {
   const [running, setRunning] = useState(false);
   const [locked, setLocked] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [source, setSource] = useState("test");
-  const [provider, setProvider] = useState("openai");
+  const [translationSettings, setTranslationSettings] = useState(defaultTranslationSettings);
+  const [apiKey, setApiKey] = useState("");
+  const [translationSettingsStatus, setTranslationSettingsStatus] = useState("");
+  const [microphones, setMicrophones] = useState<AudioDevice[]>([]);
+  const [microphoneId, setMicrophoneId] = useState("");
+  const [systemAudioDevices, setSystemAudioDevices] = useState<AudioDevice[]>([]);
+  const [systemAudioDeviceId, setSystemAudioDeviceId] = useState("");
   const [opacity, setOpacity] = useState(92);
   const [status, setStatus] = useState(defaultStatus);
   const [subtitle, setSubtitle] = useState(fallbackSnapshot);
@@ -110,6 +148,32 @@ function App() {
       })
       .catch(() => {
         // Browser preview uses deterministic local sample data.
+      });
+  }, []);
+
+  useEffect(() => {
+    Promise.all([
+      invoke<AudioDevice[]>("list_microphone_devices"),
+      invoke<AudioDevice[]>("list_system_audio_devices"),
+    ])
+      .then(([inputDevices, outputDevices]) => {
+        setMicrophones(inputDevices);
+        setSystemAudioDevices(outputDevices);
+        const defaultInput = inputDevices.find((device) => device.isDefault) ?? inputDevices[0];
+        const defaultOutput = outputDevices.find((device) => device.isDefault) ?? outputDevices[0];
+        setMicrophoneId((current) => current || defaultInput?.id || "");
+        setSystemAudioDeviceId((current) => current || defaultOutput?.id || "");
+      })
+      .catch(() => {
+        // Device enumeration is unavailable in browser preview mode.
+      });
+  }, []);
+
+  useEffect(() => {
+    invoke<TranslationSettings>("get_translation_settings")
+      .then(setTranslationSettings)
+      .catch(() => {
+        // Browser preview has no credential-store bridge.
       });
   }, []);
 
@@ -185,14 +249,72 @@ function App() {
       }
       if (source === "test") {
         await invoke("start_test_session");
+      } else if (source === "microphone") {
+        await invoke("start_microphone_session", {
+          deviceId: microphoneId || null,
+        });
+      } else if (source === "system") {
+        await invoke("start_system_audio_session", {
+          deviceId: systemAudioDeviceId || null,
+        });
       } else {
-        throw new Error("当前阶段只有本地测试视频接入了实时识别");
+        throw new Error("当前阶段尚未接入该音频来源");
       }
     } catch (error) {
       setRunning(false);
       setSessionState("error");
       setSessionMessage(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  async function saveTranslationSettings() {
+    setTranslationSettingsStatus("");
+    try {
+      const next = await invoke<TranslationSettings>("save_translation_settings", {
+        update: {
+          provider: translationSettings.provider,
+          endpoint: translationSettings.endpoint,
+          model: translationSettings.model,
+          apiKey: apiKey.trim() || undefined,
+        },
+      });
+      setTranslationSettings(next);
+      setApiKey("");
+      setTranslationSettingsStatus("已保存");
+    } catch (error) {
+      setTranslationSettingsStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function clearTranslationApiKey() {
+    setTranslationSettingsStatus("");
+    try {
+      const next = await invoke<TranslationSettings>("save_translation_settings", {
+        update: {
+          provider: translationSettings.provider,
+          endpoint: translationSettings.endpoint,
+          model: translationSettings.model,
+          apiKey: "",
+        },
+      });
+      setTranslationSettings(next);
+      setApiKey("");
+      setTranslationSettingsStatus("已移除");
+    } catch (error) {
+      setTranslationSettingsStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function selectTranslationProvider(provider: string) {
+    setTranslationSettings((current) => ({
+      ...current,
+      provider,
+      endpoint: defaultEndpointForProvider(provider),
+      model: provider === "openai-compatible" && !current.model.trim()
+        ? "gpt-4o-mini"
+        : current.model,
+    }));
+    setTranslationSettingsStatus("");
   }
 
   async function minimizeWindow() {
@@ -231,6 +353,7 @@ function App() {
               aria-label="音频来源"
               data-testid="audio-source"
               value={source}
+              disabled={running}
               onChange={(event) => setSource(event.target.value)}
             >
               <option value="test">本地测试视频</option>
@@ -321,17 +444,115 @@ function App() {
 
       {settingsOpen && (
         <aside className="quick-settings" aria-label="快速设置">
+          {source === "microphone" && (
+            <label>
+              <span>麦克风</span>
+              <select
+                aria-label="麦克风设备"
+                value={microphoneId}
+                disabled={running || microphones.length === 0}
+                onChange={(event) => setMicrophoneId(event.target.value)}
+              >
+                {microphones.length === 0 && <option value="">系统默认</option>}
+                {microphones.map((device) => (
+                  <option value={device.id} key={device.id}>
+                    {device.name}{device.isDefault ? "（默认）" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {source === "system" && (
+            <label>
+              <span>系统输出</span>
+              <select
+                aria-label="系统音频输出设备"
+                value={systemAudioDeviceId}
+                disabled={running || systemAudioDevices.length === 0}
+                onChange={(event) => setSystemAudioDeviceId(event.target.value)}
+              >
+                {systemAudioDevices.length === 0 && <option value="">系统默认</option>}
+                {systemAudioDevices.map((device) => (
+                  <option value={device.id} key={device.id}>
+                    {device.name}{device.isDefault ? "（默认）" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             <span>翻译</span>
             <select
               aria-label="翻译服务"
-              value={provider}
-              onChange={(event) => setProvider(event.target.value)}
+              value={translationSettings.provider}
+              onChange={(event) => selectTranslationProvider(event.target.value)}
             >
-              <option value="openai">OpenAI Compatible</option>
-              <option value="deepl" disabled>DeepL（待接入）</option>
+              <option value="openai-compatible">OpenAI Compatible</option>
+              <option value="deepl">DeepL</option>
             </select>
           </label>
+          <label>
+            <span>端点</span>
+            <input
+              type="url"
+              aria-label="翻译服务端点"
+              value={translationSettings.endpoint}
+              onChange={(event) => setTranslationSettings((current) => ({
+                ...current,
+                endpoint: event.target.value,
+              }))}
+            />
+          </label>
+          {translationSettings.provider === "openai-compatible" && (
+            <label>
+              <span>模型</span>
+              <input
+                type="text"
+                aria-label="翻译模型"
+                value={translationSettings.model}
+                onChange={(event) => setTranslationSettings((current) => ({
+                  ...current,
+                  model: event.target.value,
+                }))}
+              />
+            </label>
+          )}
+          <label>
+            <span>API 密钥</span>
+            <input
+              type="password"
+              autoComplete="off"
+              aria-label="翻译 API 密钥"
+              placeholder={translationSettings.apiKeyConfigured ? "已配置" : "未配置"}
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+            />
+          </label>
+          <div className="translation-actions">
+            <button
+              className="icon-button"
+              type="button"
+              title="保存翻译设置"
+              aria-label="保存翻译设置"
+              onClick={() => void saveTranslationSettings()}
+            >
+              <Save size={15} />
+            </button>
+            {translationSettings.apiKeyStoredInCredentialStore && (
+              <button
+                className="icon-button danger"
+                type="button"
+                title="移除系统保存的 API 密钥"
+                aria-label="移除系统保存的 API 密钥"
+                onClick={() => void clearTranslationApiKey()}
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
+            <span className="translation-settings-status" role="status" aria-live="polite">
+              {translationSettingsStatus}
+            </span>
+          </div>
           <label className="opacity-control">
             <span>透明度</span>
             <input

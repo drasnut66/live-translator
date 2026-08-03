@@ -40,7 +40,7 @@ input:focus-visible {
 .overlay {
   position: relative;
   display: grid;
-  grid-template-rows: 42px minmax(116px, 1fr) 28px;
+  grid-template-rows: 42px minmax(114px, 1fr) 28px;
   width: 100%;
   height: 100%;
   min-width: 460px;
@@ -156,6 +156,11 @@ input:focus-visible {
 .source-select select {
   width: 100%;
   font-size: 11px;
+}
+
+select:disabled {
+  opacity: 0.58;
+  cursor: default;
 }
 
 .icon-button {
@@ -278,9 +283,13 @@ input:focus-visible {
   right: 42px;
   top: 38px;
   z-index: 3;
-  gap: 15px;
-  min-height: 38px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: min(calc(100% - 16px), 704px);
+  max-height: calc(100% - 74px);
+  gap: 6px 10px;
   padding: 7px 10px;
+  overflow-y: auto;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
   color: #c9ccce;
@@ -289,7 +298,10 @@ input:focus-visible {
 }
 
 .quick-settings label {
-  gap: 7px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
   font-size: 10px;
   white-space: nowrap;
 }
@@ -302,10 +314,36 @@ input:focus-visible {
   text-align: right;
 }
 
-.quick-settings select {
-  max-width: 145px;
+.quick-settings select,
+.quick-settings input:not([type="range"]) {
+  width: 100%;
+  min-width: 0;
+  border: 0;
   color: #f7f5f0;
+  background: transparent;
   font-size: 10px;
+}
+
+.quick-settings input:not([type="range"])::placeholder {
+  color: #858a8c;
+}
+
+.translation-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  gap: 3px;
+}
+
+.translation-settings-status {
+  min-width: 0;
+  overflow: hidden;
+  color: #8f9496;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .opacity-control input {
@@ -381,7 +419,8 @@ input:focus-visible {
 
   .quick-settings {
     right: 8px;
-    gap: 9px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 9px;
   }
 
   .opacity-control input {

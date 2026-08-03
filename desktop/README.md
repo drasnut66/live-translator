@@ -26,10 +26,10 @@ builds use the platform app-data directory unless that variable is set.
 The test source is the repository-level `1.flv` media file. The Tauri backend decodes it
 incrementally, keeps one Whisper model loaded, and emits Japanese partial/commit events
 to the overlay. A rolling Silero VAD window closes utterances after silence instead of
-using fixed-duration subtitle chunks. Set `LIVE_TRANSLATOR_API_KEY` (and optionally the
-endpoint/model variables documented in the root README) to translate committed text
-asynchronously through an OpenAI-compatible API. Without a key, the app remains usable
-as a local Japanese ASR overlay and leaves the Chinese line as `等待翻译`.
+using fixed-duration subtitle chunks. Use the overlay settings to select an
+OpenAI-compatible or DeepL provider and save its API key to the platform credential store.
+The development fallback variables are documented in the root README. Without a key, the
+app remains usable as a local Japanese ASR overlay and leaves the Chinese line as `等待翻译`.
 
 The release workflow builds macOS arm64, macOS x64, and Windows x64 bundles from this
 directory. Signing and notarization are intentionally left to the maintainer's secrets.

@@ -24,6 +24,20 @@ Status: completed for the full 356.08-second test file. See
   path passed on the first eight seconds of `1.flv`; wall latency remains to instrument.
 - Rolling Silero VAD endpoint detection. The first 30 seconds of `1.flv` produced four
   endpoint commits at 7.76, 16.52, 20.78, and 25.04 seconds.
+- Native microphone enumeration and capture. A two-second MacBook Air microphone probe
+  emitted 2000 ms of 16 kHz mono PCM with peak 0.0185 and zero dropped native samples.
+- Microphone conversion tests cover stereo downmix, 20 ms framing, same-rate passthrough,
+  anti-aliased 48-to-16 kHz conversion, and five-second queue overflow behavior.
+- System-audio adapters use the same bounded native capture queue and 16 kHz mono frame
+  contract. The macOS path requires a Screen Recording permission grant and an audible output
+  fixture; the current Mac probe captured 5000 ms with zero dropped samples while a 20-second
+  fixture played, but reported `peak=0.0000`. Non-silent macOS output still requires a direct
+  grant to the executable under test; Windows hardware validation remains required.
+- Translation settings validate HTTP(S) provider endpoints, normalize persisted values, and
+  verify that the serialized app-data settings contain no API-key field. Desktop tests do not
+  write to the user's credential store.
+- DeepL response parsing trims a successful translated text and rejects unsuccessful responses
+  without exposing the provider response body.
 - First partial subtitle wall latency.
 - Stable Japanese commit wall latency.
 - Chinese translation latency.
@@ -46,6 +60,6 @@ must recover from a temporary translation API failure, and must keep the audio q
 bounded. Initial targets are less than 900 ms for the first partial Japanese result,
 less than 1.8 s for a stable Japanese result, and less than 3 s for confirmed Chinese.
 
-The offline ASR real-time factor target and media-input VAD path are met on the current
-Mac. Streaming wall latency, translation latency, long-run memory, API recovery, and
-live-device capture checks remain open.
+The offline ASR real-time factor target, media-input VAD path, and short microphone capture
+check are met on the current Mac. Streaming wall latency, translation latency, long-run
+memory, API recovery, Windows microphone hardware, and system-audio checks remain open.

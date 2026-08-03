@@ -1,9 +1,11 @@
+use super::AudioFrameSource;
 use live_translator_core::{AudioFrame, Pcm16FrameAssembler};
 use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::io::{self, Read};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdout, Command, Stdio};
+use std::sync::atomic::AtomicBool;
 
 #[derive(Debug, Clone)]
 pub struct FfmpegSourceConfig {
@@ -146,6 +148,16 @@ impl Drop for FfmpegPcmSource {
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
+    }
+}
+
+impl AudioFrameSource for FfmpegPcmSource {
+    fn next_frame(&mut self, _stop: &AtomicBool) -> io::Result<Option<AudioFrame>> {
+        FfmpegPcmSource::next_frame(self)
+    }
+
+    fn stop(&mut self) -> io::Result<()> {
+        FfmpegPcmSource::stop(self)
     }
 }
 

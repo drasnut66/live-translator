@@ -29,3 +29,28 @@ THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 `whisper-rs` 0.16.0 is released under the Unlicense. Its repository is
 <https://codeberg.org/tazz4843/whisper-rs>.
+
+## CPAL
+
+`cpal` 0.18.1 provides cross-platform audio device access and is released under the
+Apache License 2.0. Its repository is <https://github.com/RustAudio/cpal>.
+
+## Rubato
+
+`rubato` 0.16.2 provides fixed-ratio audio resampling and is released under the MIT
+License. Its repository is <https://github.com/HEnquist/rubato>.
+
+## ScreenCaptureKit-rs
+
+`screencapturekit` 8.0.1 provides the macOS ScreenCaptureKit binding and is released under
+MIT OR Apache-2.0. Its repository is <https://github.com/doom-fish/screencapturekit-rs>.
+
+## WASAPI-rs
+
+`wasapi` 0.23.0 provides the Windows WASAPI loopback binding and is released under the MIT
+License. Its repository is <https://github.com/HEnquist/wasapi-rs>.
+
+## keyring-rs
+
+`keyring` 4.1.6 provides the platform credential-store abstraction and is released under
+MIT OR Apache-2.0. Its repository is <https://github.com/open-source-cooperative/keyring-rs>.

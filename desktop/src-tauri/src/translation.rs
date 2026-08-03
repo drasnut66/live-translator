@@ -1,23 +1,301 @@
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Condvar, Mutex,
 };
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub const TRANSLATION_EVENT: &str = "subtitle:translation";
 
-const DEFAULT_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_OPENAI_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_DEEPL_ENDPOINT: &str = "https://api-free.deepl.com/v2/translate";
 const DEFAULT_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_PROMPT: &str =
     "Translate Japanese subtitles into natural Simplified Chinese. Return only the translation, without explanations or quotation marks.";
+const DEFAULT_TIMEOUT_MS: u64 = 8_000;
+const MINIMUM_TIMEOUT_MS: u64 = 1_000;
+const MAXIMUM_TIMEOUT_MS: u64 = 60_000;
+const OPENAI_COMPATIBLE_PROVIDER: &str = "openai-compatible";
+const DEEPL_PROVIDER: &str = "deepl";
+const TRANSLATION_SETTINGS_FILE: &str = "translation-settings.json";
+const CREDENTIAL_SERVICE: &str = "com.mon3tr.live-translator.translation";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TranslationProvider {
+    OpenAiCompatible,
+    DeepL,
+}
+
+impl TranslationProvider {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value.trim() {
+            OPENAI_COMPATIBLE_PROVIDER => Ok(Self::OpenAiCompatible),
+            DEEPL_PROVIDER => Ok(Self::DeepL),
+            _ => Err("the selected translation provider is not supported".to_owned()),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAiCompatible => OPENAI_COMPATIBLE_PROVIDER,
+            Self::DeepL => DEEPL_PROVIDER,
+        }
+    }
+
+    fn default_endpoint(self) -> &'static str {
+        match self {
+            Self::OpenAiCompatible => DEFAULT_OPENAI_ENDPOINT,
+            Self::DeepL => DEFAULT_DEEPL_ENDPOINT,
+        }
+    }
+
+    fn credential_account(self) -> &'static str {
+        match self {
+            Self::OpenAiCompatible => "openai-compatible-api-key",
+            Self::DeepL => "deepl-api-key",
+        }
+    }
+
+    fn environment_api_key_name(self) -> &'static str {
+        match self {
+            Self::OpenAiCompatible => "LIVE_TRANSLATOR_API_KEY",
+            Self::DeepL => "LIVE_TRANSLATOR_DEEPL_API_KEY",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredTranslationSettings {
+    provider: String,
+    endpoint: String,
+    model: String,
+    system_prompt: String,
+    timeout_ms: u64,
+}
+
+impl StoredTranslationSettings {
+    fn defaults_from_environment() -> Self {
+        Self {
+            provider: OPENAI_COMPATIBLE_PROVIDER.to_owned(),
+            endpoint: environment_value(
+                "LIVE_TRANSLATOR_API_URL",
+                TranslationProvider::OpenAiCompatible.default_endpoint(),
+            ),
+            model: environment_value("LIVE_TRANSLATOR_MODEL", DEFAULT_MODEL),
+            system_prompt: environment_value("LIVE_TRANSLATOR_SYSTEM_PROMPT", DEFAULT_PROMPT),
+            timeout_ms: env::var("LIVE_TRANSLATOR_TIMEOUT_MS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(DEFAULT_TIMEOUT_MS)
+                .clamp(MINIMUM_TIMEOUT_MS, MAXIMUM_TIMEOUT_MS),
+        }
+    }
+
+    fn normalized(mut self) -> Result<Self, String> {
+        self.provider = self.provider.trim().to_owned();
+        self.endpoint = self.endpoint.trim().to_owned();
+        self.model = self.model.trim().to_owned();
+        self.system_prompt = self.system_prompt.trim().to_owned();
+
+        let provider = TranslationProvider::parse(&self.provider)?;
+        self.provider = provider.as_str().to_owned();
+
+        if self.endpoint.is_empty() {
+            return Err("translation endpoint must not be empty".to_owned());
+        }
+        if provider == TranslationProvider::OpenAiCompatible
+            && (self.model.is_empty() || self.system_prompt.is_empty())
+        {
+            return Err("translation model and prompt must not be empty".to_owned());
+        }
+        let endpoint = reqwest::Url::parse(&self.endpoint)
+            .map_err(|_| "translation endpoint must be a valid URL".to_owned())?;
+        if endpoint.scheme() != "https" && endpoint.scheme() != "http" {
+            return Err("translation endpoint must use HTTP or HTTPS".to_owned());
+        }
+        if !(MINIMUM_TIMEOUT_MS..=MAXIMUM_TIMEOUT_MS).contains(&self.timeout_ms) {
+            return Err(format!(
+                "translation timeout must be between {MINIMUM_TIMEOUT_MS} and {MAXIMUM_TIMEOUT_MS} ms"
+            ));
+        }
+        Ok(self)
+    }
+
+    fn provider_kind(&self) -> Result<TranslationProvider, String> {
+        TranslationProvider::parse(&self.provider)
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationSettingsPayload {
+    pub provider: String,
+    pub endpoint: String,
+    pub model: String,
+    pub api_key_configured: bool,
+    pub api_key_stored_in_credential_store: bool,
+    pub credential_store_available: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationSettingsUpdate {
+    provider: String,
+    endpoint: String,
+    model: String,
+    api_key: Option<String>,
+}
+
+fn environment_value(name: &str, default: &str) -> String {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default.to_owned())
+}
+
+fn translation_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|directory| directory.join(TRANSLATION_SETTINGS_FILE))
+        .map_err(|_| "unable to locate the application settings directory".to_owned())
+}
+
+fn load_stored_settings(app: &AppHandle) -> Result<StoredTranslationSettings, String> {
+    let path = translation_settings_path(app)?;
+    let contents = match fs::read(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            return StoredTranslationSettings::defaults_from_environment().normalized();
+        }
+        Err(_) => return Err("unable to read translation settings".to_owned()),
+    };
+    serde_json::from_slice::<StoredTranslationSettings>(&contents)
+        .map_err(|_| "translation settings are invalid".to_owned())?
+        .normalized()
+}
+
+fn save_stored_settings(
+    app: &AppHandle,
+    settings: &StoredTranslationSettings,
+) -> Result<(), String> {
+    let path = translation_settings_path(app)?;
+    let directory = path
+        .parent()
+        .ok_or_else(|| "unable to locate the application settings directory".to_owned())?;
+    fs::create_dir_all(directory)
+        .map_err(|_| "unable to create the application settings directory".to_owned())?;
+    let contents = serde_json::to_vec_pretty(settings)
+        .map_err(|_| "unable to encode translation settings".to_owned())?;
+    fs::write(path, contents).map_err(|_| "unable to save translation settings".to_owned())
+}
+
+fn credential_entry(provider: TranslationProvider) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(CREDENTIAL_SERVICE, provider.credential_account())
+        .map_err(|_| "the OS credential store is unavailable".to_owned())
+}
+
+fn credential_store_api_key(provider: TranslationProvider) -> Option<String> {
+    credential_entry(provider)
+        .ok()?
+        .get_password()
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+fn environment_api_key(provider: TranslationProvider) -> Option<String> {
+    env::var(provider.environment_api_key_name())
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+fn resolved_api_key(provider: TranslationProvider) -> Option<String> {
+    credential_store_api_key(provider).or_else(|| environment_api_key(provider))
+}
+
+fn set_credential_store_api_key(
+    provider: TranslationProvider,
+    api_key: &str,
+) -> Result<(), String> {
+    credential_entry(provider)?
+        .set_password(api_key)
+        .map_err(|_| "unable to store the API key in the OS credential store".to_owned())
+}
+
+fn delete_credential_store_api_key(provider: TranslationProvider) -> Result<(), String> {
+    let entry = credential_entry(provider)?;
+    match entry.get_password() {
+        Ok(_) => entry
+            .delete_credential()
+            .map_err(|_| "unable to remove the API key from the OS credential store".to_owned()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err("unable to read the API key from the OS credential store".to_owned()),
+    }
+}
+
+fn settings_payload(settings: StoredTranslationSettings) -> TranslationSettingsPayload {
+    let provider = settings
+        .provider_kind()
+        .expect("translation settings must be normalized before serialization");
+    let api_key_stored_in_credential_store = credential_store_api_key(provider).is_some();
+    TranslationSettingsPayload {
+        provider: settings.provider,
+        endpoint: settings.endpoint,
+        model: settings.model,
+        api_key_configured: api_key_stored_in_credential_store
+            || environment_api_key(provider).is_some(),
+        api_key_stored_in_credential_store,
+        credential_store_available: keyring::Entry::store_status().is_ok(),
+    }
+}
+
+#[tauri::command]
+pub fn get_translation_settings(app: AppHandle) -> Result<TranslationSettingsPayload, String> {
+    load_stored_settings(&app).map(settings_payload)
+}
+
+#[tauri::command]
+pub fn save_translation_settings(
+    app: AppHandle,
+    update: TranslationSettingsUpdate,
+) -> Result<TranslationSettingsPayload, String> {
+    let current = load_stored_settings(&app)?;
+    let settings = StoredTranslationSettings {
+        provider: update.provider,
+        endpoint: update.endpoint,
+        model: update.model,
+        system_prompt: current.system_prompt,
+        timeout_ms: current.timeout_ms,
+    }
+    .normalized()?;
+    let provider = settings.provider_kind()?;
+
+    if let Some(api_key) = update.api_key {
+        let api_key = api_key.trim();
+        if api_key.is_empty() {
+            delete_credential_store_api_key(provider)?;
+        } else {
+            set_credential_store_api_key(provider, api_key)?;
+        }
+    }
+
+    save_stored_settings(&app, &settings)?;
+    Ok(settings_payload(settings))
+}
 
 #[derive(Debug, Clone)]
 pub struct TranslationConfig {
+    provider: TranslationProvider,
     endpoint: String,
     api_key: String,
     model: String,
@@ -26,41 +304,18 @@ pub struct TranslationConfig {
 }
 
 impl TranslationConfig {
-    pub fn from_env() -> Option<Self> {
-        let api_key = env::var("LIVE_TRANSLATOR_API_KEY").ok()?;
-        let api_key = api_key.trim().to_owned();
-        if api_key.is_empty() {
-            return None;
-        }
-
-        let endpoint = env::var("LIVE_TRANSLATOR_API_URL")
-            .unwrap_or_else(|_| DEFAULT_ENDPOINT.to_owned())
-            .trim()
-            .to_owned();
-        let model = env::var("LIVE_TRANSLATOR_MODEL")
-            .unwrap_or_else(|_| DEFAULT_MODEL.to_owned())
-            .trim()
-            .to_owned();
-        let system_prompt = env::var("LIVE_TRANSLATOR_SYSTEM_PROMPT")
-            .unwrap_or_else(|_| DEFAULT_PROMPT.to_owned())
-            .trim()
-            .to_owned();
-        let timeout_ms = env::var("LIVE_TRANSLATOR_TIMEOUT_MS")
-            .ok()
-            .and_then(|value| value.parse::<u64>().ok())
-            .unwrap_or(8_000)
-            .clamp(1_000, 60_000);
-
-        if endpoint.is_empty() || model.is_empty() || system_prompt.is_empty() {
-            return None;
-        }
+    pub fn load(app: &AppHandle) -> Option<Self> {
+        let settings = load_stored_settings(app).ok()?;
+        let provider = settings.provider_kind().ok()?;
+        let api_key = resolved_api_key(provider)?;
 
         Some(Self {
-            endpoint,
+            provider,
+            endpoint: settings.endpoint,
             api_key,
-            model,
-            system_prompt,
-            timeout: Duration::from_millis(timeout_ms),
+            model: settings.model,
+            system_prompt: settings.system_prompt,
+            timeout: Duration::from_millis(settings.timeout_ms),
         })
     }
 }
@@ -158,6 +413,86 @@ impl OpenAiCompatibleTranslator {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct DeepLRequest<'a> {
+    text: [&'a str; 1],
+    target_lang: &'static str,
+    source_lang: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeepLResponse {
+    translations: Vec<DeepLTranslation>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeepLTranslation {
+    text: String,
+}
+
+#[derive(Debug, Clone)]
+struct DeepLTranslator {
+    client: Client,
+    config: TranslationConfig,
+}
+
+impl DeepLTranslator {
+    fn new(config: TranslationConfig) -> Result<Self, String> {
+        let client = Client::builder()
+            .timeout(config.timeout)
+            .build()
+            .map_err(|error| format!("failed to build translation client: {error}"))?;
+        Ok(Self { client, config })
+    }
+
+    fn translate(&self, text_ja: &str) -> Result<String, String> {
+        let request = DeepLRequest {
+            text: [text_ja],
+            target_lang: "ZH",
+            source_lang: "JA",
+        };
+        let response = self
+            .client
+            .post(&self.config.endpoint)
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("DeepL-Auth-Key {}", self.config.api_key),
+            )
+            .json(&request)
+            .send()
+            .map_err(|error| format!("translation request failed: {error}"))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .map_err(|error| format!("failed to read translation response: {error}"))?;
+        parse_deepl_response(status, &body)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum TranslationClient {
+    OpenAi(OpenAiCompatibleTranslator),
+    DeepL(DeepLTranslator),
+}
+
+impl TranslationClient {
+    fn new(config: TranslationConfig) -> Result<Self, String> {
+        match config.provider {
+            TranslationProvider::OpenAiCompatible => {
+                OpenAiCompatibleTranslator::new(config).map(Self::OpenAi)
+            }
+            TranslationProvider::DeepL => DeepLTranslator::new(config).map(Self::DeepL),
+        }
+    }
+
+    fn translate(&self, text_ja: &str) -> Result<String, String> {
+        match self {
+            Self::OpenAi(translator) => translator.translate(text_ja),
+            Self::DeepL(translator) => translator.translate(text_ja),
+        }
+    }
+}
+
 fn parse_translation_response(status: reqwest::StatusCode, body: &str) -> Result<String, String> {
     if !status.is_success() {
         return Err(format!("translation API returned {status}"));
@@ -172,6 +507,22 @@ fn parse_translation_response(status: reqwest::StatusCode, body: &str) -> Result
         .filter(|text| !text.is_empty())
         .ok_or_else(|| "translation response has no text".to_owned())?;
     Ok(text.to_owned())
+}
+
+fn parse_deepl_response(status: reqwest::StatusCode, body: &str) -> Result<String, String> {
+    if !status.is_success() {
+        return Err(format!("translation API returned {status}"));
+    }
+
+    let response: DeepLResponse =
+        serde_json::from_str(body).map_err(|error| format!("invalid DeepL response: {error}"))?;
+    response
+        .translations
+        .first()
+        .map(|translation| translation.text.trim())
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| "DeepL response has no text".to_owned())
 }
 
 /// Runs API calls away from the ASR thread. A small bounded queue keeps a slow
@@ -195,14 +546,14 @@ struct TranslationQueue {
 
 impl TranslationWorker {
     pub fn start(app: AppHandle, stop: Arc<AtomicBool>) -> Self {
-        let Some(config) = TranslationConfig::from_env() else {
+        let Some(config) = TranslationConfig::load(&app) else {
             return Self {
                 queue: None,
                 join: None,
             };
         };
 
-        let Ok(translator) = OpenAiCompatibleTranslator::new(config) else {
+        let Ok(translator) = TranslationClient::new(config) else {
             return Self {
                 queue: None,
                 join: None,
@@ -257,7 +608,7 @@ impl Drop for TranslationWorker {
 fn run_worker(
     app: AppHandle,
     stop: Arc<AtomicBool>,
-    translator: OpenAiCompatibleTranslator,
+    translator: TranslationClient,
     queue: Arc<TranslationQueue>,
 ) {
     loop {
@@ -316,6 +667,17 @@ mod tests {
     }
 
     #[test]
+    fn parses_deepl_translation_response() {
+        let body =
+            r#"{"translations":[{"detected_source_language":"JA","text":" 今日は晴れです。 "}]}"#;
+
+        assert_eq!(
+            parse_deepl_response(reqwest::StatusCode::OK, body).unwrap(),
+            "今日は晴れです。"
+        );
+    }
+
+    #[test]
     fn rejects_unsuccessful_status_without_exposing_response_body() {
         let error = parse_translation_response(
             reqwest::StatusCode::UNAUTHORIZED,
@@ -325,6 +687,66 @@ mod tests {
 
         assert_eq!(error, "translation API returned 401 Unauthorized");
         assert!(!error.contains("sensitive"));
+    }
+
+    #[test]
+    fn normalizes_openai_compatible_provider_settings() {
+        let settings = StoredTranslationSettings {
+            provider: " openai-compatible ".to_owned(),
+            endpoint: " https://gateway.example.test/v1/chat/completions ".to_owned(),
+            model: " test-model ".to_owned(),
+            system_prompt: " translate ".to_owned(),
+            timeout_ms: 8_000,
+        }
+        .normalized()
+        .unwrap();
+
+        assert_eq!(settings.provider, OPENAI_COMPATIBLE_PROVIDER);
+        assert_eq!(
+            settings.endpoint,
+            "https://gateway.example.test/v1/chat/completions"
+        );
+        assert_eq!(settings.model, "test-model");
+    }
+
+    #[test]
+    fn accepts_deepl_provider_settings_without_a_model() {
+        let settings = StoredTranslationSettings {
+            provider: DEEPL_PROVIDER.to_owned(),
+            endpoint: " https://api-free.deepl.com/v2/translate ".to_owned(),
+            model: String::new(),
+            system_prompt: String::new(),
+            timeout_ms: 8_000,
+        }
+        .normalized()
+        .unwrap();
+
+        assert_eq!(settings.provider, DEEPL_PROVIDER);
+        assert_eq!(settings.endpoint, "https://api-free.deepl.com/v2/translate");
+    }
+
+    #[test]
+    fn rejects_non_http_translation_endpoint() {
+        let error = StoredTranslationSettings {
+            provider: OPENAI_COMPATIBLE_PROVIDER.to_owned(),
+            endpoint: "file:///private/config.json".to_owned(),
+            model: "test-model".to_owned(),
+            system_prompt: "translate".to_owned(),
+            timeout_ms: 8_000,
+        }
+        .normalized()
+        .unwrap_err();
+
+        assert_eq!(error, "translation endpoint must use HTTP or HTTPS");
+    }
+
+    #[test]
+    fn stored_settings_serialization_has_no_api_key_field() {
+        let serialized =
+            serde_json::to_string(&StoredTranslationSettings::defaults_from_environment()).unwrap();
+
+        assert!(!serialized.contains("apiKey"));
+        assert!(!serialized.contains("api_key"));
     }
 
     #[test]

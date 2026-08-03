@@ -68,3 +68,38 @@ the pinned `whisper-rs` dependency. It evaluates a four-second rolling tail ever
 commits after approximately 500 ms of silence, and forces a boundary after 15 seconds of
 continuous speech. This avoids a second ONNX runtime and keeps macOS/Windows packaging
 identical.
+
+## D011: Keep microphone callbacks lightweight and resample off the callback thread
+
+CPAL owns cross-platform input-device access and delivers each device's native sample
+format. The real-time callback only converts samples to `f32`, downmixes channels, and
+pushes native-rate chunks into a five-second bounded queue. The consumer thread uses
+Rubato's fixed-ratio FFT resampler to produce anti-aliased 16 kHz mono frames. This keeps
+Whisper inference and resampling work off the audio callback while preserving one
+`AudioFrameSource` contract for media and microphone sessions.
+
+## D012: Raise the macOS baseline to 13 for in-process system-audio capture
+
+This supersedes D008's 10.15 baseline. ScreenCaptureKit system-audio capture is available on
+macOS 13 or newer, and the selected Rust binding compiles its bridge with that minimum target.
+Keeping the app at 10.15 would create a package that links against unavailable framework
+symbols. The Tauri bundle setting and Cargo deployment target both use 13.0; Windows remains
+unaffected. The macOS adapter captures a selected display, excludes this application's audio,
+and requests 48 kHz mono float PCM before handing it to the common bounded frame path.
+
+## D013: Store translation keys in the platform credential store
+
+The application writes OpenAI-compatible API keys to macOS Keychain or Windows Credential
+Manager through the `keyring` crate. The IPC settings response never contains the key; it only
+reports whether a credential exists. Endpoint and model are non-sensitive settings in the app
+data directory, while development environment variables stay as a fallback for unattended
+local runs. This removes a packaged-build dependency on plain-text secrets without breaking
+the existing developer workflow.
+
+## D014: Keep DeepL behind the existing translation worker
+
+DeepL uses the same committed-subtitle queue and timeout as the OpenAI-compatible client. Its
+adapter sends one Japanese text per `POST /v2/translate` JSON request with the
+`DeepL-Auth-Key` authorization header and targets Simplified Chinese. Provider selection is
+persisted separately from the credential account, so switching providers never sends one
+provider's key to another API.

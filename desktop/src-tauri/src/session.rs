@@ -1,6 +1,9 @@
 use crate::asr::whisper::{WhisperEngine, WhisperEngineConfig};
 use crate::audio::ffmpeg::{FfmpegPcmSource, FfmpegSourceConfig};
+use crate::audio::microphone::{available_input_devices, AudioDevice, MicrophonePcmSource};
+use crate::audio::system_audio::{available_system_audio_devices, SystemAudioPcmSource};
 use crate::audio::vad::SileroVad;
+use crate::audio::AudioFrameSource;
 use crate::translation::{TranslationJob, TranslationWorker};
 use crate::{is_file, model_directory, project_path};
 use live_translator_core::{StablePrefixCoordinator, TokenPiece, WHISPER_SAMPLE_RATE};
@@ -63,8 +66,14 @@ pub struct SessionController {
     active: Mutex<Option<ActiveSession>>,
 }
 
+enum SessionInput {
+    Media { input: PathBuf, realtime: bool },
+    Microphone { device_id: Option<String> },
+    SystemAudio { device_id: Option<String> },
+}
+
 impl SessionController {
-    pub fn start(&self, app: AppHandle, input: PathBuf, realtime: bool) -> Result<(), String> {
+    fn start(&self, app: AppHandle, input: SessionInput) -> Result<(), String> {
         let mut active = self
             .active
             .lock()
@@ -84,7 +93,7 @@ impl SessionController {
         let thread_stop = Arc::clone(&stop);
         let join = thread::Builder::new()
             .name("live-translator-asr".to_owned())
-            .spawn(move || run_session(app, input, realtime, thread_stop))
+            .spawn(move || run_session(app, input, thread_stop))
             .map_err(|error| format!("failed to start recognition thread: {error}"))?;
         *active = Some(ActiveSession { stop, join });
         Ok(())
@@ -132,7 +141,13 @@ pub fn start_media_session(
     if !input.exists() && !looks_like_network_url(&input) {
         return Err(format!("audio input does not exist: {}", input.display()));
     }
-    sessions.start(app, input, realtime.unwrap_or(true))
+    sessions.start(
+        app,
+        SessionInput::Media {
+            input,
+            realtime: realtime.unwrap_or(true),
+        },
+    )
 }
 
 #[tauri::command]
@@ -146,7 +161,41 @@ pub fn start_test_session(
     if !input.is_file() {
         return Err(format!("test media is unavailable: {}", input.display()));
     }
-    sessions.start(app, input, true)
+    sessions.start(
+        app,
+        SessionInput::Media {
+            input,
+            realtime: true,
+        },
+    )
+}
+
+#[tauri::command]
+pub fn start_microphone_session(
+    app: AppHandle,
+    sessions: State<'_, SessionController>,
+    device_id: Option<String>,
+) -> Result<(), String> {
+    sessions.start(app, SessionInput::Microphone { device_id })
+}
+
+#[tauri::command]
+pub fn list_microphone_devices() -> Result<Vec<AudioDevice>, String> {
+    available_input_devices()
+}
+
+#[tauri::command]
+pub fn start_system_audio_session(
+    app: AppHandle,
+    sessions: State<'_, SessionController>,
+    device_id: Option<String>,
+) -> Result<(), String> {
+    sessions.start(app, SessionInput::SystemAudio { device_id })
+}
+
+#[tauri::command]
+pub fn list_system_audio_devices() -> Result<Vec<AudioDevice>, String> {
+    available_system_audio_devices()
 }
 
 #[tauri::command]
@@ -154,7 +203,7 @@ pub fn stop_session(sessions: State<'_, SessionController>) -> Result<(), String
     sessions.stop()
 }
 
-fn run_session(app: AppHandle, input: PathBuf, realtime: bool, stop: Arc<AtomicBool>) {
+fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
     emit_status(&app, "loading", None);
 
     let model = model_directory(&app).join(MODEL_FILE);
@@ -195,9 +244,12 @@ fn run_session(app: AppHandle, input: PathBuf, realtime: bool, stop: Arc<AtomicB
         }
     };
 
-    let mut source_config = FfmpegSourceConfig::new(input.to_string_lossy());
-    source_config.realtime = realtime;
-    let mut source = match FfmpegPcmSource::spawn(source_config) {
+    if stop.load(Ordering::Acquire) {
+        emit_status(&app, "stopped", None);
+        return;
+    }
+
+    let mut source: Box<dyn AudioFrameSource> = match open_audio_source(input) {
         Ok(source) => source,
         Err(error) => {
             emit_status(&app, "error", Some(error.to_string()));
@@ -219,7 +271,7 @@ fn run_session(app: AppHandle, input: PathBuf, realtime: bool, stop: Arc<AtomicB
     let session_started = Instant::now();
 
     while !stop.load(Ordering::Acquire) {
-        let frame = match source.next_frame() {
+        let frame = match source.next_frame(&stop) {
             Ok(Some(frame)) => frame,
             Ok(None) => break,
             Err(error) => {
@@ -378,6 +430,21 @@ fn run_session(app: AppHandle, input: PathBuf, realtime: bool, stop: Arc<AtomicB
         "stopped",
         Some(format!("session elapsed: {elapsed_ms} ms")),
     );
+}
+
+fn open_audio_source(input: SessionInput) -> std::io::Result<Box<dyn AudioFrameSource>> {
+    match input {
+        SessionInput::Media { input, realtime } => {
+            let mut config = FfmpegSourceConfig::new(input.to_string_lossy());
+            config.realtime = realtime;
+            FfmpegPcmSource::spawn(config)
+                .map(|source| Box::new(source) as Box<dyn AudioFrameSource>)
+        }
+        SessionInput::Microphone { device_id } => MicrophonePcmSource::open(device_id.as_deref())
+            .map(|source| Box::new(source) as Box<dyn AudioFrameSource>),
+        SessionInput::SystemAudio { device_id } => SystemAudioPcmSource::open(device_id.as_deref())
+            .map(|source| Box::new(source) as Box<dyn AudioFrameSource>),
+    }
 }
 
 fn decode_and_emit(

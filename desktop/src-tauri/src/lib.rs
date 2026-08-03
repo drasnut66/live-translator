@@ -100,7 +100,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             runtime_status,
             demo_subtitle,
+            translation::get_translation_settings,
+            translation::save_translation_settings,
+            session::list_microphone_devices,
+            session::list_system_audio_devices,
             session::start_media_session,
+            session::start_microphone_session,
+            session::start_system_audio_session,
             session::start_test_session,
             session::stop_session
         ])
