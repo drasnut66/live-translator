@@ -5,6 +5,8 @@ use tauri::Manager;
 
 pub mod asr;
 pub mod audio;
+pub mod session;
+pub mod translation;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,7 +96,14 @@ fn demo_subtitle() -> SubtitleSnapshot {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![runtime_status, demo_subtitle])
+        .manage(session::SessionController::default())
+        .invoke_handler(tauri::generate_handler![
+            runtime_status,
+            demo_subtitle,
+            session::start_media_session,
+            session::start_test_session,
+            session::stop_session
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
 }

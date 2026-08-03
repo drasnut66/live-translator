@@ -23,10 +23,12 @@ On Windows PowerShell, use `..\scripts\download_models.ps1`. Set
 `LIVE_TRANSLATOR_MODEL_DIR` when models should live outside the checkout. Packaged
 builds use the platform app-data directory unless that variable is set.
 
-The current subtitle text is deterministic sample data from the local media smoke test.
-The Tauri backend now contains an incremental FFmpeg PCM source and a statically linked,
-long-lived Whisper engine. Tauri session events and translation API wiring are the next
-implementation stage.
+The test source is the repository-level `1.flv` media file. The Tauri backend decodes it
+incrementally, keeps one Whisper model loaded, and emits Japanese partial/commit events
+to the overlay. Set `LIVE_TRANSLATOR_API_KEY` (and optionally the endpoint/model variables
+documented in the root README) to translate committed text asynchronously through an
+OpenAI-compatible API. Without a key, the app remains usable as a local Japanese ASR
+overlay and leaves the Chinese line as `等待翻译`.
 
 The release workflow builds macOS arm64, macOS x64, and Windows x64 bundles from this
 directory. Signing and notarization are intentionally left to the maintainer's secrets.

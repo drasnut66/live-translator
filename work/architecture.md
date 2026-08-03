@@ -74,14 +74,17 @@ TranslationRequest {
 }
 ```
 
-Providers must support cancellation, timeout, and a final result. Streaming output is
-optional. API keys are stored in the OS credential store, not in SQLite or JSON.
+The current OpenAI-compatible provider runs in a separate bounded worker, supports a
+request timeout, and emits a final result without blocking ASR. A later provider can
+implement the same `TranslationJob`/`TranslationPayload` boundary. API keys are read
+from environment variables during development and must move to the OS credential store
+for packaged builds; they are never written to SQLite or JSON.
 
 ## Current implementation boundary
 
 The incremental PCM contract, bounded queue, media decoder, long-lived in-process
-whisper.cpp engine, Silero model, stable-prefix core, and Tauri overlay have been
-verified. The ASR probe consumes `FfmpegPcmSource::next_frame()` without relaunching a
-CLI process or reloading model weights. The Chinese line is still fixture data. The next
-boundary is a managed Tauri session that emits partial/commit events and uses Silero VAD
-to rotate utterance buffers before translation.
+whisper.cpp engine, Silero model, stable-prefix core, Tauri overlay, managed session, and
+asynchronous translation worker have been verified. The ASR probe and native session
+consume `FfmpegPcmSource::next_frame()` without relaunching a CLI process or reloading
+model weights. The next boundary is Silero VAD-driven utterance rotation followed by
+microphone and system-audio adapters.

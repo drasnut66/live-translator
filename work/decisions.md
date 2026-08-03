@@ -52,3 +52,11 @@ older macOS 10.13 deployment target. Tauri is explicitly configured with
 and still supports Intel and Apple Silicon Macs from the intended usage range. The
 repository Cargo configuration exports the same deployment target so CMake-based Rust
 dependencies receive it before the application build script runs.
+
+## D009: Keep network translation off the ASR thread
+
+Committed Japanese text is submitted to a small bounded worker that calls an
+OpenAI-compatible API with a fixed timeout. Slow or unavailable providers therefore do
+not pause PCM ingestion or Whisper inference, and translation is disabled when no API
+key is configured. Development builds read credentials from environment variables;
+packaged settings must use the OS credential store rather than plain-text files.

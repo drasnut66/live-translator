@@ -21,6 +21,10 @@ Date: 2026-08-03
 - Verified repeated Japanese revisions and final stable-prefix output against the first
   eight seconds of `1.flv` using `examples/live_asr_probe.rs`.
 - Added the Tauri 2 + React desktop overlay and connected it to Rust runtime status.
+- Added a managed Tauri recognition session with `session:status`, `subtitle:partial`,
+  and `subtitle:commit` events, including real-time playback from `1.flv`.
+- Added a bounded asynchronous OpenAI-compatible translation worker for committed
+  Japanese text; it is disabled automatically when no API key is configured.
 
 ## Environment status
 
@@ -34,11 +38,11 @@ Date: 2026-08-03
 
 ## Next executable tasks
 
-1. Wrap the proven FFmpeg/Whisper loop in a managed Tauri session.
-2. Feed ASR revisions through the stable-prefix coordinator into Tauri events.
-3. Use Silero VAD to rotate utterance buffers and commit sentence tails.
-4. Implement the OpenAI-compatible translation provider with cancellation and timeout.
-5. Add microphone capture, then isolate WASAPI and ScreenCaptureKit system-audio adapters.
+1. Use Silero VAD to rotate utterance buffers and commit sentence tails instead of the
+   temporary eight-second boundary.
+2. Add microphone capture, then isolate WASAPI and ScreenCaptureKit system-audio adapters.
+3. Move API keys into the OS credential store and expose provider settings in the UI.
+4. Add DeepL and local NLLB/CTranslate2 providers behind the same translation worker.
 
 ## Current blockers
 

@@ -8,9 +8,9 @@ translation provider. The codebase is intentionally small and keeps large models
 platform binaries, and build caches outside Git.
 
 > Current status: the desktop overlay, incremental FFmpeg PCM source, in-process
-> long-lived whisper.cpp engine, and stable-prefix streaming core are implemented. Tauri
-> session events and network translation are the next milestone; the Chinese line in the
-> UI is still fixture data.
+> long-lived whisper.cpp engine, stable-prefix streaming core, managed Tauri session, and
+> asynchronous OpenAI-compatible translation worker are implemented. Silero VAD and
+> microphone/system-audio capture are the next milestone.
 
 ## Features in this milestone
 
@@ -23,6 +23,8 @@ platform binaries, and build caches outside Git.
 - 20 ms PCM frame assembly and bounded audio queue with dropped-frame accounting.
 - Statically linked whisper.cpp engine with Metal on macOS and CPU fallback on Windows.
 - Token-prefix stability coordinator with duplicate and regression protection.
+- Managed Tauri session events for streaming Japanese partials and commits.
+- Optional asynchronous OpenAI-compatible translation for committed Japanese text.
 - GitHub Actions checks the core on macOS, Windows, and Linux, with full desktop checks
   on macOS and Windows.
 
@@ -126,9 +128,22 @@ uses the same Rust API with a CPU backend on Windows.
 
 ## Translation providers
 
-The provider contract is designed for an OpenAI-compatible HTTP API, DeepL, or a local
-translation service. API keys will be read from the OS credential store in the live
-provider milestone; they must not be stored in Git, JSON settings, or SQLite.
+The current provider is an OpenAI-compatible `/v1/chat/completions` client. It runs in a
+separate bounded worker, uses a request timeout, and accepts compatible gateways such as
+local OpenAI-compatible servers by changing the endpoint. Configure it in the environment
+before starting the desktop app:
+
+```sh
+export LIVE_TRANSLATOR_API_KEY="..."
+export LIVE_TRANSLATOR_API_URL="https://api.openai.com/v1/chat/completions"
+export LIVE_TRANSLATOR_MODEL="gpt-4o-mini"
+```
+
+Optional `LIVE_TRANSLATOR_SYSTEM_PROMPT` and `LIVE_TRANSLATOR_TIMEOUT_MS` are supported.
+When the key is absent, the app remains local-only and shows `等待翻译` for committed
+lines. API keys are not stored in Git, JSON settings, or SQLite; OS credential-store
+integration is still planned for packaged builds. DeepL and local NLLB providers can be
+added behind the same worker contract later.
 
 ## Cross-platform release
 
