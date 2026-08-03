@@ -46,6 +46,12 @@ async function startCapture(streamId) {
   console.log("got tab media stream");
 
   audioContext = new AudioContext({ sampleRate: 48000 });
+  // Offscreen documents are not covered by the autoplay policy exception, so
+  // the context starts suspended; resume it so the worklet actually runs and
+  // the tab audio reaches the speakers.
+  if (audioContext.state === "suspended") {
+    await audioContext.resume();
+  }
   sourceNode = audioContext.createMediaStreamSource(stream);
   await audioContext.audioWorklet.addModule("audio-processor.js");
   const worklet = new AudioWorkletNode(audioContext, "pcm-processor", {
