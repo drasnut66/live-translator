@@ -85,12 +85,14 @@ async function startCapture(streamId) {
   console.log("capture running, websocket open");
 }
 
-function connectSocket() {
+function connectSocket(attempt = 0) {
   return new Promise((resolve, reject) => {
     socket = new WebSocket(WS_URL);
     socket.binaryType = "arraybuffer";
+    let settled = false;
     socket.onopen = () => {
       wsOpen = true;
+      settled = true;
       resolve();
     };
     socket.onerror = () => {
@@ -100,8 +102,21 @@ function connectSocket() {
       wsOpen = false;
     };
     setTimeout(() => {
-      if (!wsOpen) reject(new Error(`websocket to ${WS_URL} did not open`));
-    }, 5000);
+      if (settled) return;
+      socket.close();
+      // The app only listens on this port while a browser-audio session is
+      // running, so the user may have opened the extension first. Retry a few
+      // times before giving up.
+      if (attempt < 4) {
+        setTimeout(() => {
+          connectSocket(attempt + 1)
+            .then(resolve)
+            .catch(reject);
+        }, 1000);
+      } else {
+        reject(new Error(`websocket to ${WS_URL} did not open`));
+      }
+    }, 2000);
   });
 }
 

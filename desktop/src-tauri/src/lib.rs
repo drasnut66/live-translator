@@ -43,6 +43,18 @@ fn model_directory(app: &tauri::AppHandle) -> PathBuf {
         return project_path("models");
     }
 
+    // Packaged builds look for a `models/` directory next to the executable,
+    // so the app stays small and models are kept external.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let adjacent = parent.join("models");
+            if adjacent.is_dir() {
+                return adjacent;
+            }
+        }
+    }
+
+    // Fall back to the application data directory.
     app.path()
         .app_data_dir()
         .unwrap_or_else(|_| project_path("models"))
