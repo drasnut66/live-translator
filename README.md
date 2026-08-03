@@ -193,8 +193,9 @@ export LIVE_TRANSLATOR_DEEPL_API_KEY="..."
 
 Optional `LIVE_TRANSLATOR_SYSTEM_PROMPT` and `LIVE_TRANSLATOR_TIMEOUT_MS` are supported.
 When the key is absent, the app remains local-only and shows `等待翻译` for committed
-lines. A saved OS credential takes precedence over the matching environment variable. Local
-NLLB providers can be added behind the same worker contract later.
+lines. A saved OS credential takes precedence over the matching environment variable. A local
+NLLB runtime was considered and deliberately excluded for the initial product (see D015 in
+`work/decisions.md`); the app stays cloud-only for translation to keep the build lightweight.
 
 ## Cross-platform release
 

@@ -103,3 +103,19 @@ adapter sends one Japanese text per `POST /v2/translate` JSON request with the
 `DeepL-Auth-Key` authorization header and targets Simplified Chinese. Provider selection is
 persisted separately from the credential account, so switching providers never sends one
 provider's key to another API.
+
+## D015: Keep cloud translation and skip a local NLLB runtime
+
+A local NLLB/CTranslate2 fallback was evaluated and explicitly rejected for the initial
+product. Adding it would bundle a second inference runtime plus a ~600 MB distilled NLLB
+model on top of the existing whisper.cpp + Silero assets, roughly doubling the distributed
+model size and adding CPU translation latency of seconds per sentence. Personal subtitle
+volume stays far inside the free tier of DeepL (500k characters/month) or a low-cost
+OpenAI-compatible endpoint, which already run off the ASR thread with a bounded queue and
+timeout. This keeps the app lightweight and adds zero model-distribution surface.
+
+**Why:** the user prioritizes a lightweight build; the free cloud tier covers expected usage.
+**How to apply:** do not schedule NLLB/CTranslate2 integration for the current milestone.
+Revisit only if offline translation or fixed-price volume becomes a hard requirement, at
+which point the ONNX Runtime path (the only mature local option with a Rust binding) would be
+assessed against that requirement.

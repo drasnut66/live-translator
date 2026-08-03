@@ -60,6 +60,22 @@ must recover from a temporary translation API failure, and must keep the audio q
 bounded. Initial targets are less than 900 ms for the first partial Japanese result,
 less than 1.8 s for a stable Japanese result, and less than 3 s for confirmed Chinese.
 
-The offline ASR real-time factor target, media-input VAD path, and short microphone capture
-check are met on the current Mac. Streaming wall latency, translation latency, long-run
-memory, API recovery, Windows microphone hardware, and system-audio checks remain open.
+## Streaming soak result (2026-08-03)
+
+`examples/soak_probe.rs` replayed the full 356-second `1.flv` through the realtime
+managed-session loop (FFmpeg `-re` source, rolling Silero VAD, whisper.cpp large-v3-turbo
+with Metal, stable-prefix coordinator).
+
+- Memory was bounded and flat: 45 RSS samples over ~12 minutes wall time ranged
+  724–791 MB and ended 40 MB below the start; no continuous growth.
+- The pipeline could not keep real time: realtime factor 0.49x, average decode
+  2136 ms, first partial at 1500 ms input time (target <900 ms). 356 s of input took
+  about 733 s of wall time.
+- The 0.49x bottleneck is single-window decode latency with large-v3-turbo. The
+  batch benchmark's 8.8x factor does not transfer to the streaming cadence, where a
+  ~1–2 s window is decoded every second. Streaming real time likely requires a
+  smaller model (whisper-small/base) or a longer decode cadence; this is now a
+  data-driven model-selection decision.
+
+Streaming wall latency, translation latency, API recovery, Windows microphone hardware,
+and system-audio checks remain open.

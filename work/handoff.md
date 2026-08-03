@@ -74,10 +74,10 @@ Date: 2026-08-03
 ## Next executable tasks
 
 1. Run the equivalent WASAPI hardware probe on a Windows host.
-2. Record the local-provider decision (cloud DeepL free tier, no local NLLB) in
-   `decisions.md`.
-3. Instrument streaming wall latency and run a 30-minute microphone/session soak test,
-   recording latency, memory, and drop counts.
+2. Run the full soak test and record the latency/memory results in `test-plan.md`.
+   The soak probe (`examples/soak_probe.rs`) and streaming wall-latency fields on the
+   partial/commit/translation events are in place; the cloud-provider decision (no local
+   NLLB) is recorded as D015.
 
 ## Current blockers
 

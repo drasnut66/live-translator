@@ -45,6 +45,7 @@ pub struct SubtitlePartialPayload {
     pub unstable_ja: String,
     pub input_ms: u64,
     pub decode_ms: u64,
+    pub wall_ms: u64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -54,6 +55,7 @@ pub struct SubtitleCommitPayload {
     pub start_ms: u64,
     pub end_ms: u64,
     pub text_ja: String,
+    pub wall_ms: u64,
 }
 
 struct ActiveSession {
@@ -289,6 +291,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                     &mut coordinator,
                     &audio,
                     total_samples,
+                    session_started,
                 ) {
                     Ok(hypothesis) => hypothesis,
                     Err(error) => {
@@ -305,6 +308,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                 &mut coordinator,
                 &latest_hypothesis,
                 input_ms,
+                session_started,
             );
             segment_id += 1;
             coordinator = StablePrefixCoordinator::new(segment_id, input_ms);
@@ -341,6 +345,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                         &mut coordinator,
                         &audio,
                         total_samples,
+                        session_started,
                     ) {
                         Ok(hypothesis) => hypothesis,
                         Err(error) => {
@@ -356,6 +361,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                     &mut coordinator,
                     &latest_hypothesis,
                     input_ms,
+                    session_started,
                 );
                 segment_id += 1;
                 coordinator = StablePrefixCoordinator::new(segment_id, input_ms);
@@ -378,6 +384,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                 &mut coordinator,
                 &audio,
                 total_samples,
+                session_started,
             ) {
                 Ok(hypothesis) => hypothesis,
                 Err(error) => {
@@ -404,6 +411,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                 &mut coordinator,
                 &audio,
                 total_samples,
+                session_started,
             ) {
                 Ok(hypothesis) => hypothesis,
                 Err(error) => {
@@ -420,6 +428,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
             &mut coordinator,
             &latest_hypothesis,
             input_ms,
+            session_started,
         );
     }
     let _ = source.stop();
@@ -454,6 +463,7 @@ fn decode_and_emit(
     coordinator: &mut StablePrefixCoordinator,
     audio: &[f32],
     total_samples: usize,
+    session_started: Instant,
 ) -> Result<Vec<TokenPiece>, String> {
     let decode_started = Instant::now();
     let hypothesis = engine
@@ -462,6 +472,7 @@ fn decode_and_emit(
     let input_ms = samples_to_milliseconds(total_samples);
     let update = coordinator.observe(&hypothesis, input_ms);
     let decode_ms = decode_started.elapsed().as_millis() as u64;
+    let wall_ms = session_started.elapsed().as_millis() as u64;
     let _ = app.emit(
         SUBTITLE_PARTIAL_EVENT,
         SubtitlePartialPayload {
@@ -471,10 +482,11 @@ fn decode_and_emit(
             unstable_ja: update.partial.unstable_text_ja,
             input_ms,
             decode_ms,
+            wall_ms,
         },
     );
     if let Some(commit) = update.commit {
-        emit_commit(app, translation, commit);
+        emit_commit(app, translation, commit, session_started);
     }
     Ok(hypothesis)
 }
@@ -489,9 +501,10 @@ fn emit_finished_segment(
     coordinator: &mut StablePrefixCoordinator,
     latest_hypothesis: &[TokenPiece],
     input_ms: u64,
+    session_started: Instant,
 ) {
     if let Some(commit) = coordinator.finish(latest_hypothesis, input_ms) {
-        emit_commit(app, translation, commit);
+        emit_commit(app, translation, commit, session_started);
     }
 }
 
@@ -499,12 +512,15 @@ fn emit_commit(
     app: &AppHandle,
     translation: &TranslationWorker,
     commit: live_translator_core::AsrCommit,
+    session_started: Instant,
 ) {
+    let wall_ms = session_started.elapsed().as_millis() as u64;
     let translation_job = TranslationJob {
         segment_id: commit.segment_id,
         start_ms: commit.start_ms,
         end_ms: commit.end_ms,
         text_ja: commit.text_ja.clone(),
+        submitted_wall_ms: wall_ms,
     };
     let _ = app.emit(
         SUBTITLE_COMMIT_EVENT,
@@ -513,6 +529,7 @@ fn emit_commit(
             start_ms: commit.start_ms,
             end_ms: commit.end_ms,
             text_ja: commit.text_ja,
+            wall_ms,
         },
     );
     translation.submit(translation_job);

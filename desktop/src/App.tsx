@@ -42,6 +42,7 @@ type SubtitlePartialPayload = {
   unstableJa: string;
   inputMs: number;
   decodeMs: number;
+  wallMs: number;
 };
 
 type SubtitleCommitPayload = {
@@ -49,6 +50,7 @@ type SubtitleCommitPayload = {
   startMs: number;
   endMs: number;
   textJa: string;
+  wallMs: number;
 };
 
 type TranslationPayload = {
@@ -57,6 +59,7 @@ type TranslationPayload = {
   endMs: number;
   textJa: string;
   textZh: string;
+  latencyMs: number;
 };
 
 type TranslationSettings = {
@@ -213,6 +216,7 @@ function App() {
           }),
           listen<TranslationPayload>("subtitle:translation", ({ payload }) => {
             setTranslation(payload.textZh);
+            setLatencyMs(payload.latencyMs);
             setHistory((entries) => entries.map((entry) => (
               entry.segmentId === payload.segmentId
                 ? { ...entry, chinese: payload.textZh }

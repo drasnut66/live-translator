@@ -9,7 +9,7 @@ use std::sync::{
     Arc, Condvar, Mutex,
 };
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 pub const TRANSLATION_EVENT: &str = "subtitle:translation";
@@ -326,6 +326,7 @@ pub struct TranslationJob {
     pub start_ms: u64,
     pub end_ms: u64,
     pub text_ja: String,
+    pub submitted_wall_ms: u64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -336,6 +337,7 @@ pub struct TranslationPayload {
     pub end_ms: u64,
     pub text_ja: String,
     pub text_zh: String,
+    pub latency_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -633,9 +635,11 @@ fn run_worker(
         if stop.load(Ordering::Acquire) {
             break;
         }
+        let translate_started = Instant::now();
         let Ok(text_zh) = translator.translate(&job.text_ja) else {
             continue;
         };
+        let latency_ms = translate_started.elapsed().as_millis() as u64;
         if stop.load(Ordering::Acquire) {
             break;
         }
@@ -647,6 +651,7 @@ fn run_worker(
                 end_ms: job.end_ms,
                 text_ja: job.text_ja,
                 text_zh,
+                latency_ms,
             },
         );
     }
@@ -761,6 +766,7 @@ mod tests {
             start_ms: 0,
             end_ms: segment_id * 1_000,
             text_ja: format!("segment {segment_id}"),
+            submitted_wall_ms: 0,
         };
 
         worker.submit(job(1));
