@@ -56,9 +56,11 @@ fn is_file(path: impl AsRef<Path>) -> bool {
 #[tauri::command]
 fn runtime_status(app: tauri::AppHandle) -> RuntimeStatus {
     let models = model_directory(&app);
+    let asr_ready = is_file(models.join("ggml-small.bin"))
+        || is_file(models.join("ggml-large-v3-turbo-q5_0.bin"));
     RuntimeStatus {
         platform: std::env::consts::OS,
-        model_ready: is_file(models.join("ggml-large-v3-turbo-q5_0.bin")),
+        model_ready: asr_ready,
         vad_ready: is_file(models.join("ggml-silero-v6.2.0.bin")),
         whisper_ready: true,
     }
