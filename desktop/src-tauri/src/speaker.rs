@@ -163,12 +163,8 @@ fn run_worker(
     }
 }
 
-#[cfg(target_os = "macos")]
-fn current_execution_mode() -> ExecutionMode {
-    ExecutionMode::CoreMl
-}
-
-#[cfg(not(target_os = "macos"))]
+// Use the ONNX Runtime backend on every platform: the bundled speakrs models
+// are ONNX files, and CoreML would require separate .mlmodelc artifacts.
 fn current_execution_mode() -> ExecutionMode {
     ExecutionMode::Cpu
 }
@@ -181,25 +177,22 @@ fn emit_assignments(
     result_tx: &mpsc::Sender<SpeakerAssignment>,
 ) {
     for segment in pending {
-        let best = diar_segments.iter().fold(
-            None,
-            |best: Option<(&speakrs::segment::Segment, f64)>, diar| {
-                let overlap = overlap_seconds(
-                    segment.start_sec,
-                    segment.end_sec,
-                    diar.start,
-                    diar.end,
-                );
-                if overlap <= 0.0 {
-                    return best;
-                }
-                match best {
-                    Some((_, best_overlap)) if overlap <= best_overlap => best,
-                    _ => Some((diar, overlap)),
-                }
-            },
-        );
-        let Some((diar, _)) = best else {
+        // Use the speaker active at the segment's midpoint. speakrs emits
+        // overlapping segments (SPEAKER_00 often covers a whole batch with a
+        // long dominant turn while SPEAKER_01 are short interjections), so
+        // maximizing overlap area always picks the dominant speaker. At the
+        // midpoint, prefer the shortest overlapping segment: the dominant
+        // speaker's long span and a real turn overlap there, and the shorter
+        // one is the actual speaker for this subtitle.
+        let mid = (segment.start_sec + segment.end_sec) / 2.0;
+        let best = diar_segments
+            .iter()
+            .filter(|diar| mid >= diar.start && mid <= diar.end)
+            .min_by_key(|diar| {
+                let duration = (diar.end - diar.start) as i64;
+                duration
+            });
+        let Some(diar) = best else {
             eprintln!("speaker: segment {} unlabeled", segment.segment_id);
             continue;
         };
@@ -215,8 +208,4 @@ fn emit_assignments(
             speaker_id,
         });
     }
-}
-
-fn overlap_seconds(a_start: f64, a_end: f64, b_start: f64, b_end: f64) -> f64 {
-    (a_end.min(b_end) - a_start.max(b_start)).max(0.0)
 }
