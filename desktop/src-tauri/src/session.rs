@@ -7,6 +7,7 @@ use crate::audio::vad::SileroVad;
 use crate::audio::websocket::BrowserTabPcmSource;
 use crate::audio::AudioFrameSource;
 use crate::translation::{TranslationJob, TranslationWorker};
+use crate::speaker::{PendingSegment, SpeakerWorker};
 use crate::{is_file, model_directory, project_path};
 use live_translator_core::{StablePrefixCoordinator, TokenPiece, WHISPER_SAMPLE_RATE};
 use serde::Serialize;
@@ -22,6 +23,7 @@ use tauri::{AppHandle, Emitter, State};
 pub const SESSION_STATUS_EVENT: &str = "session:status";
 pub const SUBTITLE_PARTIAL_EVENT: &str = "subtitle:partial";
 pub const SUBTITLE_COMMIT_EVENT: &str = "subtitle:commit";
+pub const SPEAKER_ASSIGNMENT_EVENT: &str = "speaker:assignment";
 
 const DEFAULT_MODEL_FILE: &str = "ggml-small.bin";
 const OPTIONAL_LARGE_MODEL_FILE: &str = "ggml-large-v3-turbo-q5_0.bin";
@@ -283,6 +285,11 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
 
     emit_status(&app, "running", None);
     let translation = TranslationWorker::start(app.clone(), Arc::clone(&stop));
+    let speaker = SpeakerWorker::start(
+        model_directory(&app).join("speakrs"),
+        Arc::clone(&stop),
+    )
+    .ok();
     let mut segment_id = 1_u64;
     let mut coordinator = StablePrefixCoordinator::new(segment_id, 0);
     let mut audio = Vec::with_capacity(MAXIMUM_WINDOW_SAMPLES);
@@ -314,6 +321,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                     &audio,
                     total_samples,
                     session_started,
+                    speaker.as_ref(),
                 ) {
                     Ok(hypothesis) => hypothesis,
                     Err(error) => {
@@ -331,6 +339,8 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                 &latest_hypothesis,
                 input_ms,
                 session_started,
+                speaker.as_ref(),
+                &audio,
             );
             segment_id += 1;
             coordinator = StablePrefixCoordinator::new(segment_id, input_ms);
@@ -368,6 +378,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                         &audio,
                         total_samples,
                         session_started,
+                        speaker.as_ref(),
                     ) {
                         Ok(hypothesis) => hypothesis,
                         Err(error) => {
@@ -384,6 +395,8 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                     &latest_hypothesis,
                     input_ms,
                     session_started,
+                    speaker.as_ref(),
+                    &audio,
                 );
                 segment_id += 1;
                 coordinator = StablePrefixCoordinator::new(segment_id, input_ms);
@@ -407,6 +420,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                 &audio,
                 total_samples,
                 session_started,
+                speaker.as_ref(),
             ) {
                 Ok(hypothesis) => hypothesis,
                 Err(error) => {
@@ -417,6 +431,12 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
             last_decode_samples = total_samples;
             while next_decode <= total_samples {
                 next_decode += STEP_SAMPLES;
+            }
+        }
+
+        if let Some(speaker) = speaker.as_ref() {
+            for assignment in speaker.drain_assignments() {
+                let _ = app.emit(SPEAKER_ASSIGNMENT_EVENT, assignment);
             }
         }
     }
@@ -434,6 +454,7 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
                 &audio,
                 total_samples,
                 session_started,
+                speaker.as_ref(),
             ) {
                 Ok(hypothesis) => hypothesis,
                 Err(error) => {
@@ -451,9 +472,12 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
             &latest_hypothesis,
             input_ms,
             session_started,
+            speaker.as_ref(),
+            &audio,
         );
     }
     let _ = source.stop();
+    drop(speaker);
     drop(translation);
     let elapsed_ms = session_started.elapsed().as_millis() as u64;
     emit_status(
@@ -488,6 +512,7 @@ fn decode_and_emit(
     audio: &[f32],
     total_samples: usize,
     session_started: Instant,
+    speaker: Option<&SpeakerWorker>,
 ) -> Result<Vec<TokenPiece>, String> {
     let decode_started = Instant::now();
     let hypothesis = engine
@@ -510,7 +535,7 @@ fn decode_and_emit(
         },
     );
     if let Some(commit) = update.commit {
-        emit_commit(app, translation, commit, session_started);
+        emit_commit(app, translation, commit, session_started, speaker, audio);
     }
     Ok(hypothesis)
 }
@@ -526,9 +551,11 @@ fn emit_finished_segment(
     latest_hypothesis: &[TokenPiece],
     input_ms: u64,
     session_started: Instant,
+    speaker: Option<&SpeakerWorker>,
+    segment_audio: &[f32],
 ) {
     if let Some(commit) = coordinator.finish(latest_hypothesis, input_ms) {
-        emit_commit(app, translation, commit, session_started);
+        emit_commit(app, translation, commit, session_started, speaker, segment_audio);
     }
 }
 
@@ -537,6 +564,8 @@ fn emit_commit(
     translation: &TranslationWorker,
     commit: live_translator_core::AsrCommit,
     session_started: Instant,
+    speaker: Option<&SpeakerWorker>,
+    segment_audio: &[f32],
 ) {
     let wall_ms = session_started.elapsed().as_millis() as u64;
     let translation_job = TranslationJob {
@@ -557,6 +586,14 @@ fn emit_commit(
         },
     );
     translation.submit(translation_job);
+    if let Some(speaker) = speaker {
+        speaker.submit(PendingSegment {
+            segment_id: commit.segment_id,
+            start_sec: commit.start_ms as f64 / 1_000.0,
+            end_sec: commit.end_ms as f64 / 1_000.0,
+            samples: segment_audio.to_vec(),
+        });
+    }
 }
 
 fn emit_status(app: &AppHandle, state: &str, message: Option<String>) {

@@ -32,6 +32,7 @@ tungstenite = { version = "0.24", default-features = false, features = ["handsha
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "=0.16.0", features = ["metal"] }
 screencapturekit = { version = "=8.0.1", features = ["macos_13_0"] }
+speakrs = { git = "https://github.com/avencera/speakrs.git", features = ["coreml"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wasapi = "=0.23.0"

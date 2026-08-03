@@ -6,6 +6,7 @@ use tauri::Manager;
 pub mod asr;
 pub mod audio;
 pub mod session;
+pub mod speaker;
 pub mod translation;
 
 #[derive(Serialize)]

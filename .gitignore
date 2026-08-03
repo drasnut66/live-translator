@@ -7,6 +7,7 @@
 # Local model and runtime data
 /models/*.bin
 /models/*.sha256
+/models/speakrs/
 /runtime/
 
 # Build output and local toolchains

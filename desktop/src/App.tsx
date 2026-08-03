@@ -82,6 +82,12 @@ type HistoryEntry = {
   japanese: string;
   chinese: string;
   segmentId: number;
+  speakerId?: number;
+};
+
+type SpeakerAssignment = {
+  segmentId: number;
+  speakerId: number;
 };
 
 const fallbackSnapshot: SubtitleSnapshot = {
@@ -237,6 +243,13 @@ function App() {
             setHistory((entries) => entries.map((entry) => (
               entry.segmentId === payload.segmentId
                 ? { ...entry, chinese: payload.textZh }
+                : entry
+            )));
+          }),
+          listen<SpeakerAssignment>("speaker:assignment", ({ payload }) => {
+            setHistory((entries) => entries.map((entry) => (
+              entry.segmentId === payload.segmentId
+                ? { ...entry, speakerId: payload.speakerId }
                 : entry
             )));
           }),
@@ -632,6 +645,11 @@ function App() {
           {history.map((entry) => (
             <div className="history-entry" key={`${entry.segmentId}-${entry.time}`}>
               <div className="history-time">{entry.time}</div>
+              {entry.speakerId !== undefined && (
+                <span className={`speaker-badge sp-${entry.speakerId % 6}`}>
+                  说话人{entry.speakerId + 1}
+                </span>
+              )}
               <div>
                 <p lang="ja">{entry.japanese}</p>
                 <p lang="zh-CN">{entry.chinese}</p>

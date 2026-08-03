@@ -366,8 +366,9 @@ select:disabled {
 
 .history-entry {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 64px auto minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
 }
 
 .history-time {
@@ -376,6 +377,22 @@ select:disabled {
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 9px;
 }
+
+.speaker-badge {
+  padding: 1px 7px;
+  margin-top: 1px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sp-0 { color: #0f141a; background: #6dd6cb; }
+.sp-1 { color: #0f141a; background: #f4a261; }
+.sp-2 { color: #0f141a; background: #c3a6ff; }
+.sp-3 { color: #0f141a; background: #ffd166; }
+.sp-4 { color: #0f141a; background: #8ab4f8; }
+.sp-5 { color: #0f141a; background: #ff8fab; }
 
 .subtitle-history p {
   margin: 0;
