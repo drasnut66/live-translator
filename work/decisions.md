@@ -60,3 +60,11 @@ OpenAI-compatible API with a fixed timeout. Slow or unavailable providers theref
 not pause PCM ingestion or Whisper inference, and translation is disabled when no API
 key is configured. Development builds read credentials from environment variables;
 packaged settings must use the OS credential store rather than plain-text files.
+
+## D010: Reuse whisper.cpp's built-in Silero VAD runtime
+
+The desktop session loads `ggml-silero-v6.2.0.bin` through the VAD API already exposed by
+the pinned `whisper-rs` dependency. It evaluates a four-second rolling tail every 250 ms,
+commits after approximately 500 ms of silence, and forces a boundary after 15 seconds of
+continuous speech. This avoids a second ONNX runtime and keeps macOS/Windows packaging
+identical.

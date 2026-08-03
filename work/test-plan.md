@@ -22,6 +22,8 @@ Status: completed for the full 356.08-second test file. See
 - A full audio queue drops the oldest frame and increments its drop counter.
 - Repeated in-process Japanese partials and a final stable-prefix commit. Functional
   path passed on the first eight seconds of `1.flv`; wall latency remains to instrument.
+- Rolling Silero VAD endpoint detection. The first 30 seconds of `1.flv` produced four
+  endpoint commits at 7.76, 16.52, 20.78, and 25.04 seconds.
 - First partial subtitle wall latency.
 - Stable Japanese commit wall latency.
 - Chinese translation latency.
@@ -44,6 +46,6 @@ must recover from a temporary translation API failure, and must keep the audio q
 bounded. Initial targets are less than 900 ms for the first partial Japanese result,
 less than 1.8 s for a stable Japanese result, and less than 3 s for confirmed Chinese.
 
-The offline ASR real-time factor target is met on the current Mac. Streaming latency,
-translation latency, long-run memory, and recovery checks remain open until the live
-pipeline is connected.
+The offline ASR real-time factor target and media-input VAD path are met on the current
+Mac. Streaming wall latency, translation latency, long-run memory, API recovery, and
+live-device capture checks remain open.

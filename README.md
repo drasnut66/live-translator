@@ -9,8 +9,9 @@ platform binaries, and build caches outside Git.
 
 > Current status: the desktop overlay, incremental FFmpeg PCM source, in-process
 > long-lived whisper.cpp engine, stable-prefix streaming core, managed Tauri session, and
-> asynchronous OpenAI-compatible translation worker are implemented. Silero VAD and
-> microphone/system-audio capture are the next milestone.
+> asynchronous OpenAI-compatible translation worker are implemented. Silero VAD now
+> closes utterances on detected silence; microphone/system-audio capture is the next
+> milestone.
 
 ## Features in this milestone
 
@@ -24,6 +25,7 @@ platform binaries, and build caches outside Git.
 - Statically linked whisper.cpp engine with Metal on macOS and CPU fallback on Windows.
 - Token-prefix stability coordinator with duplicate and regression protection.
 - Managed Tauri session events for streaming Japanese partials and commits.
+- Silero VAD endpointing with a 15-second continuous-speech safety boundary.
 - Optional asynchronous OpenAI-compatible translation for committed Japanese text.
 - GitHub Actions checks the core on macOS, Windows, and Linux, with full desktop checks
   on macOS and Windows.
@@ -125,6 +127,16 @@ cargo run --manifest-path desktop/src-tauri/Cargo.toml --example live_asr_probe 
 
 The `whisper-rs` wrapper statically compiles whisper.cpp, enables Metal on macOS, and
 uses the same Rust API with a CPU backend on Windows.
+
+### VAD endpoint probe
+
+This probe runs the same Silero VAD adapter used by the managed session without loading
+Whisper, making endpoint tuning quick:
+
+```sh
+cargo run --manifest-path desktop/src-tauri/Cargo.toml --example vad_probe -- \
+  models/ggml-silero-v6.2.0.bin /path/to/japanese-video.mp4 30
+```
 
 ## Translation providers
 

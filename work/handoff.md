@@ -25,6 +25,10 @@ Date: 2026-08-03
   and `subtitle:commit` events, including real-time playback from `1.flv`.
 - Added a bounded asynchronous OpenAI-compatible translation worker for committed
   Japanese text; it is disabled automatically when no API key is configured.
+- Added rolling Silero VAD endpoint detection to the managed session, with final decode
+  on silence and a 15-second fallback for continuous speech.
+- Verified four VAD endpoints in the first 30 seconds of `1.flv` using
+  `examples/vad_probe.rs`.
 
 ## Environment status
 
@@ -38,18 +42,18 @@ Date: 2026-08-03
 
 ## Next executable tasks
 
-1. Use Silero VAD to rotate utterance buffers and commit sentence tails instead of the
-   temporary eight-second boundary.
-2. Add microphone capture, then isolate WASAPI and ScreenCaptureKit system-audio adapters.
+1. Add microphone capture behind the shared 16 kHz mono frame contract.
+2. Isolate WASAPI and ScreenCaptureKit system-audio adapters behind that same contract.
 3. Move API keys into the OS credential store and expose provider settings in the UI.
 4. Add DeepL and local NLLB/CTranslate2 providers behind the same translation worker.
 
 ## Current blockers
 
-There is no active toolchain blocker. The in-process ASR loop is proven in the developer
-probe; production session lifetime, VAD-driven segmentation, Tauri events, and API
-translation remain. The `.flv` extension is misleading; FFmpeg identifies `1.flv` as
-MP4/MOV, so all media paths must continue to probe content rather than trust the suffix.
+There is no active toolchain blocker. The media-input pipeline, managed session,
+VAD-driven segmentation, Tauri events, and optional API translation are connected. The
+remaining functional gap is live device capture. The `.flv` extension is misleading;
+FFmpeg identifies `1.flv` as MP4/MOV, so all media paths must continue to probe content
+rather than trust the suffix.
 
 The macOS transparent Tauri window enables `macOSPrivateApi`; this is acceptable for
 personal side-loading but incompatible with Mac App Store submission.

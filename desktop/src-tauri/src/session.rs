@@ -1,5 +1,6 @@
 use crate::asr::whisper::{WhisperEngine, WhisperEngineConfig};
 use crate::audio::ffmpeg::{FfmpegPcmSource, FfmpegSourceConfig};
+use crate::audio::vad::SileroVad;
 use crate::translation::{TranslationJob, TranslationWorker};
 use crate::{is_file, model_directory, project_path};
 use live_translator_core::{StablePrefixCoordinator, TokenPiece, WHISPER_SAMPLE_RATE};
@@ -18,9 +19,12 @@ pub const SUBTITLE_PARTIAL_EVENT: &str = "subtitle:partial";
 pub const SUBTITLE_COMMIT_EVENT: &str = "subtitle:commit";
 
 const MODEL_FILE: &str = "ggml-large-v3-turbo-q5_0.bin";
+const VAD_MODEL_FILE: &str = "ggml-silero-v6.2.0.bin";
 const MINIMUM_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 3 / 2;
 const STEP_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize;
-const MAXIMUM_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 8;
+const VAD_INITIAL_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize / 2;
+const VAD_STEP_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize / 4;
+const MAXIMUM_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 15;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -171,6 +175,26 @@ fn run_session(app: AppHandle, input: PathBuf, realtime: bool, stop: Arc<AtomicB
         }
     };
 
+    let vad_model = model_directory(&app).join(VAD_MODEL_FILE);
+    if !is_file(&vad_model) {
+        emit_status(
+            &app,
+            "error",
+            Some(format!(
+                "Silero VAD model is missing: {}",
+                vad_model.display()
+            )),
+        );
+        return;
+    }
+    let mut vad = match SileroVad::load(vad_model) {
+        Ok(vad) => vad,
+        Err(error) => {
+            emit_status(&app, "error", Some(error));
+            return;
+        }
+    };
+
     let mut source_config = FfmpegSourceConfig::new(input.to_string_lossy());
     source_config.realtime = realtime;
     let mut source = match FfmpegPcmSource::spawn(source_config) {
@@ -189,6 +213,9 @@ fn run_session(app: AppHandle, input: PathBuf, realtime: bool, stop: Arc<AtomicB
     let mut latest_hypothesis: Vec<TokenPiece> = Vec::new();
     let mut total_samples = 0_usize;
     let mut next_decode = MINIMUM_WINDOW_SAMPLES;
+    let mut next_vad = VAD_INITIAL_SAMPLES;
+    let mut last_decode_samples = 0_usize;
+    let mut speech_seen = false;
     let session_started = Instant::now();
 
     while !stop.load(Ordering::Acquire) {
@@ -202,7 +229,24 @@ fn run_session(app: AppHandle, input: PathBuf, realtime: bool, stop: Arc<AtomicB
         };
 
         if audio.len() + frame.samples.len() > MAXIMUM_WINDOW_SAMPLES {
-            let input_ms = total_samples as u64 * 1000 / u64::from(WHISPER_SAMPLE_RATE);
+            if speech_seen && audio.len() >= MINIMUM_WINDOW_SAMPLES {
+                latest_hypothesis = match decode_and_emit(
+                    &app,
+                    &translation,
+                    &mut engine,
+                    &mut coordinator,
+                    &audio,
+                    total_samples,
+                ) {
+                    Ok(hypothesis) => hypothesis,
+                    Err(error) => {
+                        emit_status(&app, "error", Some(error));
+                        return;
+                    }
+                };
+                last_decode_samples = total_samples;
+            }
+            let input_ms = samples_to_milliseconds(total_samples);
             emit_finished_segment(
                 &app,
                 &translation,
@@ -214,48 +258,110 @@ fn run_session(app: AppHandle, input: PathBuf, realtime: bool, stop: Arc<AtomicB
             coordinator = StablePrefixCoordinator::new(segment_id, input_ms);
             audio.clear();
             latest_hypothesis.clear();
+            vad.reset();
+            speech_seen = false;
             next_decode = total_samples + MINIMUM_WINDOW_SAMPLES;
+            next_vad = total_samples + VAD_INITIAL_SAMPLES;
         }
 
         total_samples += frame.samples.len();
         audio.extend(frame.samples);
-        if total_samples < next_decode {
-            continue;
+
+        if total_samples >= next_vad {
+            let observation = match vad.observe(&audio) {
+                Ok(observation) => observation,
+                Err(error) => {
+                    emit_status(&app, "error", Some(error));
+                    return;
+                }
+            };
+            speech_seen = observation.speech_seen;
+            while next_vad <= total_samples {
+                next_vad += VAD_STEP_SAMPLES;
+            }
+
+            if observation.end_of_speech {
+                if audio.len() >= MINIMUM_WINDOW_SAMPLES && total_samples > last_decode_samples {
+                    latest_hypothesis = match decode_and_emit(
+                        &app,
+                        &translation,
+                        &mut engine,
+                        &mut coordinator,
+                        &audio,
+                        total_samples,
+                    ) {
+                        Ok(hypothesis) => hypothesis,
+                        Err(error) => {
+                            emit_status(&app, "error", Some(error));
+                            return;
+                        }
+                    };
+                }
+                let input_ms = samples_to_milliseconds(total_samples);
+                emit_finished_segment(
+                    &app,
+                    &translation,
+                    &mut coordinator,
+                    &latest_hypothesis,
+                    input_ms,
+                );
+                segment_id += 1;
+                coordinator = StablePrefixCoordinator::new(segment_id, input_ms);
+                audio.clear();
+                latest_hypothesis.clear();
+                vad.reset();
+                speech_seen = false;
+                next_decode = total_samples + MINIMUM_WINDOW_SAMPLES;
+                next_vad = total_samples + VAD_INITIAL_SAMPLES;
+                last_decode_samples = total_samples;
+                continue;
+            }
         }
 
-        let decode_started = Instant::now();
-        let hypothesis = match engine.transcribe(&audio) {
-            Ok(hypothesis) => hypothesis,
-            Err(error) => {
-                emit_status(&app, "error", Some(error.to_string()));
-                return;
+        if speech_seen && total_samples >= next_decode {
+            latest_hypothesis = match decode_and_emit(
+                &app,
+                &translation,
+                &mut engine,
+                &mut coordinator,
+                &audio,
+                total_samples,
+            ) {
+                Ok(hypothesis) => hypothesis,
+                Err(error) => {
+                    emit_status(&app, "error", Some(error));
+                    return;
+                }
+            };
+            last_decode_samples = total_samples;
+            while next_decode <= total_samples {
+                next_decode += STEP_SAMPLES;
             }
-        };
-        let input_ms = total_samples as u64 * 1000 / u64::from(WHISPER_SAMPLE_RATE);
-        let update = coordinator.observe(&hypothesis, input_ms);
-        let decode_ms = decode_started.elapsed().as_millis() as u64;
-        let _ = app.emit(
-            SUBTITLE_PARTIAL_EVENT,
-            SubtitlePartialPayload {
-                segment_id: update.partial.segment_id,
-                revision: update.partial.revision,
-                stable_ja: update.partial.stable_text_ja,
-                unstable_ja: update.partial.unstable_text_ja,
-                input_ms,
-                decode_ms,
-            },
-        );
-        if let Some(commit) = update.commit {
-            emit_commit(&app, &translation, commit);
-        }
-        latest_hypothesis = hypothesis;
-        while next_decode <= total_samples {
-            next_decode += STEP_SAMPLES;
         }
     }
 
     if !stop.load(Ordering::Acquire) {
-        let input_ms = total_samples as u64 * 1000 / u64::from(WHISPER_SAMPLE_RATE);
+        if speech_seen
+            && audio.len() >= MINIMUM_WINDOW_SAMPLES
+            && total_samples > last_decode_samples
+        {
+            latest_hypothesis = match decode_and_emit(
+                &app,
+                &translation,
+                &mut engine,
+                &mut coordinator,
+                &audio,
+                total_samples,
+            ) {
+                Ok(hypothesis) => hypothesis,
+                Err(error) => {
+                    emit_status(&app, "error", Some(error));
+                    let _ = source.stop();
+                    return;
+                }
+            };
+        }
+        let input_ms = samples_to_milliseconds(total_samples);
         emit_finished_segment(
             &app,
             &translation,
@@ -272,6 +378,42 @@ fn run_session(app: AppHandle, input: PathBuf, realtime: bool, stop: Arc<AtomicB
         "stopped",
         Some(format!("session elapsed: {elapsed_ms} ms")),
     );
+}
+
+fn decode_and_emit(
+    app: &AppHandle,
+    translation: &TranslationWorker,
+    engine: &mut WhisperEngine,
+    coordinator: &mut StablePrefixCoordinator,
+    audio: &[f32],
+    total_samples: usize,
+) -> Result<Vec<TokenPiece>, String> {
+    let decode_started = Instant::now();
+    let hypothesis = engine
+        .transcribe(audio)
+        .map_err(|error| error.to_string())?;
+    let input_ms = samples_to_milliseconds(total_samples);
+    let update = coordinator.observe(&hypothesis, input_ms);
+    let decode_ms = decode_started.elapsed().as_millis() as u64;
+    let _ = app.emit(
+        SUBTITLE_PARTIAL_EVENT,
+        SubtitlePartialPayload {
+            segment_id: update.partial.segment_id,
+            revision: update.partial.revision,
+            stable_ja: update.partial.stable_text_ja,
+            unstable_ja: update.partial.unstable_text_ja,
+            input_ms,
+            decode_ms,
+        },
+    );
+    if let Some(commit) = update.commit {
+        emit_commit(app, translation, commit);
+    }
+    Ok(hypothesis)
+}
+
+fn samples_to_milliseconds(samples: usize) -> u64 {
+    samples as u64 * 1_000 / u64::from(WHISPER_SAMPLE_RATE)
 }
 
 fn emit_finished_segment(

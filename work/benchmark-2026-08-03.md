@@ -50,6 +50,23 @@ The debug run reported 5.941 seconds for its one-time embedded Metal library loa
 Per-revision wall latency is not yet instrumented, so this result verifies the streaming
 call path and model reuse rather than the sub-900 ms acceptance target.
 
+## Streaming VAD probe
+
+`examples/vad_probe.rs` processed the first 30 seconds through the same rolling Silero
+adapter used by the Tauri session. It detected four endpoints at these input times:
+
+```text
+7.76 s
+16.52 s
+20.78 s
+25.04 s
+```
+
+The run completed in about 1.1 seconds after compilation on the Apple M3. whisper.cpp
+reported about 0.53 seconds of cumulative VAD inference, so this configuration leaves
+ample headroom for concurrent ASR. Endpoint quality still needs a broader fixture set
+covering background music, long silence, and very short utterances.
+
 ## Model checksums
 
 ```text

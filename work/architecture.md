@@ -86,5 +86,6 @@ The incremental PCM contract, bounded queue, media decoder, long-lived in-proces
 whisper.cpp engine, Silero model, stable-prefix core, Tauri overlay, managed session, and
 asynchronous translation worker have been verified. The ASR probe and native session
 consume `FfmpegPcmSource::next_frame()` without relaunching a CLI process or reloading
-model weights. The next boundary is Silero VAD-driven utterance rotation followed by
-microphone and system-audio adapters.
+model weights. The managed session now uses rolling Silero VAD inference to close
+utterances after silence, with a bounded continuous-speech fallback. The next boundary
+is microphone and system-audio capture.
