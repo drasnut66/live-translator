@@ -1,3 +1,4 @@
+use crate::asr::settings;
 use crate::asr::whisper::{WhisperEngine, WhisperEngineConfig};
 use crate::audio::ffmpeg::{FfmpegPcmSource, FfmpegSourceConfig};
 use crate::audio::microphone::{available_input_devices, AudioDevice, MicrophonePcmSource};
@@ -585,14 +586,14 @@ fn looks_like_network_url(input: &Path) -> bool {
 
 fn select_whisper_model(app: &AppHandle) -> Option<PathBuf> {
     let directory = model_directory(app);
-    if let Some(name) = std::env::var("LIVE_TRANSLATOR_WHISPER_MODEL").ok() {
-        let name = name.trim().to_owned();
-        if !name.is_empty() {
-            let candidate = directory.join(&name);
-            if is_file(&candidate) {
-                return Some(candidate);
-            }
-            return None;
+    let preferred = settings::selected_model_file(app);
+    let preferred = PathBuf::from(preferred);
+    // The preferred model must exist; if it does not, fall back to any model
+    // present in the directory.
+    if preferred.is_absolute() || preferred.components().count() == 1 {
+        let candidate = directory.join(&preferred);
+        if is_file(&candidate) {
+            return Some(candidate);
         }
     }
     let small = directory.join(DEFAULT_MODEL_FILE);
@@ -602,6 +603,10 @@ fn select_whisper_model(app: &AppHandle) -> Option<PathBuf> {
     let large = directory.join(OPTIONAL_LARGE_MODEL_FILE);
     if is_file(&large) {
         return Some(large);
+    }
+    let base = directory.join("ggml-base.bin");
+    if is_file(&base) {
+        return Some(base);
     }
     None
 }

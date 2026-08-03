@@ -28,6 +28,12 @@ function ensureOffscreenDocument() {
 }
 
 async function startCapture() {
+  // An active capture on another tab must be stopped first, otherwise
+  // tabCapture.getMediaStreamId reports "Cannot capture a tab with an active
+  // stream".
+  if (capturedTabId !== null) {
+    await stopCapture();
+  }
   const tab = await activeTab();
   console.log("capturing tab", tab.id, tab.url);
   const streamId = await new Promise((resolve, reject) => {

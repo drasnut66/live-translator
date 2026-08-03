@@ -102,6 +102,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             runtime_status,
             demo_subtitle,
+            asr::settings::get_asr_settings,
+            asr::settings::set_asr_model,
             translation::get_translation_settings,
             translation::save_translation_settings,
             session::list_microphone_devices,

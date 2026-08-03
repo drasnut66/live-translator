@@ -56,7 +56,7 @@ async function startCapture(streamId) {
   await audioContext.audioWorklet.addModule("audio-processor.js");
   const worklet = new AudioWorkletNode(audioContext, "pcm-processor", {
     numberOfInputs: 1,
-    numberOfOutputs: 0,
+    numberOfOutputs: 1,
     outputChannelCount: [1],
     processorOptions: {
       targetRate: TARGET_RATE,
@@ -69,6 +69,12 @@ async function startCapture(streamId) {
     socket.send(event.data);
   };
   sourceNode.connect(worklet);
+  // The worklet has one output but only posts messages; route it to a silent
+  // gain node so the graph is valid without changing what the user hears.
+  const silent = audioContext.createGain();
+  silent.gain.value = 0;
+  worklet.connect(silent);
+  silent.connect(audioContext.destination);
   // Route the original audio back to the speakers so the user still hears the
   // tab. tabCapture redirects the tab's audio into this stream, so without
   // this the tab becomes silent.

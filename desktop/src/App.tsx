@@ -116,7 +116,7 @@ function App() {
   const [locked, setLocked] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [source, setSource] = useState("test");
+  const [source, setSource] = useState("system");
   const [translationSettings, setTranslationSettings] = useState(defaultTranslationSettings);
   const [apiKey, setApiKey] = useState("");
   const [translationSettingsStatus, setTranslationSettingsStatus] = useState("");
@@ -131,6 +131,9 @@ function App() {
   const [sessionState, setSessionState] = useState<SessionStatusPayload["state"]>("stopped");
   const [sessionMessage, setSessionMessage] = useState("");
   const [activeModel, setActiveModel] = useState("whisper");
+  const [asrModel, setAsrModel] = useState("");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [asrSettingsStatus, setAsrSettingsStatus] = useState("");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([
     {
@@ -178,6 +181,17 @@ function App() {
       .then(setTranslationSettings)
       .catch(() => {
         // Browser preview has no credential-store bridge.
+      });
+  }, []);
+
+  useEffect(() => {
+    invoke<{ model: string | null; availableModels: string[] }>("get_asr_settings")
+      .then((settings) => {
+        setAsrModel(settings.model ?? "");
+        setAvailableModels(settings.availableModels);
+      })
+      .catch(() => {
+        // Browser preview has no settings bridge.
       });
   }, []);
 
@@ -254,9 +268,7 @@ function App() {
         await invoke("stop_session");
         return;
       }
-      if (source === "test") {
-        await invoke("start_test_session");
-      } else if (source === "browser") {
+      if (source === "browser") {
         await invoke("start_browser_session");
       } else if (source === "microphone") {
         await invoke("start_microphone_session", {
@@ -372,7 +384,6 @@ function App() {
               disabled={running}
               onChange={(event) => setSource(event.target.value)}
             >
-              <option value="test">本地测试视频</option>
               <option value="browser">浏览器音频</option>
               <option value="system">系统音频</option>
               <option value="microphone">麦克风</option>
@@ -496,6 +507,38 @@ function App() {
               </select>
             </label>
           )}
+          <label>
+            <span>ASR 模型</span>
+            <select
+              aria-label="ASR 模型"
+              value={asrModel}
+              disabled={running}
+              onChange={(event) => {
+                setAsrSettingsStatus("");
+                const next = event.target.value;
+                void invoke<{ model: string | null; availableModels: string[] }>("set_asr_model", {
+                  model: next,
+                })
+                  .then((settings) => {
+                    setAsrModel(settings.model ?? "");
+                    setAsrSettingsStatus("模型已保存，重启会话生效");
+                  })
+                  .catch((error) => {
+                    setAsrSettingsStatus(error instanceof Error ? error.message : String(error));
+                  });
+              }}
+            >
+              {availableModels.length === 0 && <option value="">加载中...</option>}
+              {availableModels.map((model) => (
+                <option value={model} key={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="translation-settings-status" role="status" aria-live="polite">
+            {asrSettingsStatus}
+          </span>
           <label>
             <span>翻译</span>
             <select
