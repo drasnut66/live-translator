@@ -253,6 +253,8 @@ function App() {
       }
       if (source === "test") {
         await invoke("start_test_session");
+      } else if (source === "browser") {
+        await invoke("start_browser_session");
       } else if (source === "microphone") {
         await invoke("start_microphone_session", {
           deviceId: microphoneId || null,

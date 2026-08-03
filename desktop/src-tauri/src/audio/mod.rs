@@ -2,6 +2,7 @@ pub mod ffmpeg;
 pub mod microphone;
 pub mod system_audio;
 pub mod vad;
+pub mod websocket;
 
 use live_translator_core::AudioFrame;
 use std::io;

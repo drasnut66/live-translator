@@ -109,6 +109,7 @@ pub fn run() {
             session::start_media_session,
             session::start_microphone_session,
             session::start_system_audio_session,
+            session::start_browser_session,
             session::start_test_session,
             session::stop_session
         ])

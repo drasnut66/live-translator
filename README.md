@@ -48,8 +48,8 @@ audio adapter
 ```
 
 The same Tauri/React shell is used on both desktop platforms. Platform-specific audio
-capture is isolated behind one internal frame contract. Media, microphone, and system-audio
-sources are implemented; browser-tab capture remains a separate next step.
+capture is isolated behind one internal frame contract. Media, microphone, system-audio,
+and browser-tab (via the bundled Chrome extension) sources are implemented.
 
 ## Repository layout
 
@@ -171,6 +171,31 @@ cargo run --manifest-path desktop/src-tauri/Cargo.toml --example system_audio_pr
 On macOS 13 or newer, select a display and grant Screen Recording permission when macOS asks.
 The application excludes its own output to avoid feedback. On Windows, the optional second
 argument is the WASAPI render-endpoint ID printed by the probe.
+
+### Browser-tab capture
+
+A Chrome MV3 extension (`browser-tab-capture/`) captures the audio of the active tab and
+streams it to the app over a localhost WebSocket. This is the cleanest source for web
+video because it captures only the target tab (no system notifications or other app audio,
+no microphone feedback).
+
+Setup:
+
+1. Load the unpacked `browser-tab-capture/` directory in Chrome at `chrome://extensions`
+   (enable Developer mode).
+2. Pin the "Live Translator Tab Capture" extension.
+3. In the app, choose "浏览器音频" as the audio source and start the session.
+4. Click the extension icon on the tab you want to translate. The badge shows `ON` while
+   capturing; click again to stop.
+
+The extension sends raw little-endian f32 PCM at 16 kHz mono over `ws://127.0.0.1:8765/`.
+`scripts/websocket_client_sim.py` can simulate the extension for development; the
+`browser_tab_probe` example verifies the WebSocket source path without loading Whisper:
+
+```sh
+cargo run --manifest-path desktop/src-tauri/Cargo.toml --example browser_tab_probe -- 5
+python3 scripts/websocket_client_sim.py 4
+```
 
 ## Translation providers
 

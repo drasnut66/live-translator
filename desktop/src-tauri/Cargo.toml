@@ -27,6 +27,7 @@ keyring = "=4.1.6"
 live-translator-core = { path = "../../core" }
 cpal = "=0.18.1"
 rubato = "=0.16.2"
+tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "=0.16.0", features = ["metal"] }

@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Live Translator Tab Capture",
+  "version": "0.1.0",
+  "description": "Streams the audio of the active tab to Live Translator over a localhost WebSocket.",
+  "permissions": ["tabCapture", "tabs", "offscreen"],
+  "host_permissions": ["http://127.0.0.1:8765/*", "http://localhost:8765/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Live Translator: capture this tab"
+  }
+}

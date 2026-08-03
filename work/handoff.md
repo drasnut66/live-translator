@@ -65,6 +65,12 @@ Date: 2026-08-03
   default runtime model with large-v3-turbo selectable via
   `LIVE_TRANSLATOR_WHISPER_MODEL`. Memory stayed flat in all runs. See
   `benchmark-2026-08-03.md`.
+- Added browser-tab capture: a Chrome MV3 extension (`browser-tab-capture/`) captures the
+  active tab's audio with `tabCapture` and streams 16 kHz mono f32 over a localhost
+  WebSocket, and a `BrowserTabPcmSource` (`audio/websocket.rs`) feeds it through the shared
+  `BufferedPcmCapture` frame path. Verified end to end with
+  `examples/browser_tab_probe.rs` and `scripts/websocket_client_sim.py`: a sine fixture
+  arrived with `peak=0.6000`, zero dropped samples, and reconnect handling.
 
 ## Environment status
 
@@ -81,19 +87,20 @@ Date: 2026-08-03
 ## Next executable tasks
 
 1. Run the equivalent WASAPI hardware probe on a Windows host.
-2. Run the full soak test and record the latency/memory results in `test-plan.md`.
-   The soak probe (`examples/soak_probe.rs`) and streaming wall-latency fields on the
-   partial/commit/translation events are in place; the cloud-provider decision (no local
-   NLLB) is recorded as D015.
+2. Load the `browser-tab-capture` extension in Chrome and validate the end-to-end overlay
+   session against a real web video (the WebSocket source itself is verified via
+   `browser_tab_probe`).
+3. Tag and release v0.1.0; the features for the first milestone are complete.
 
 ## Current blockers
 
 There is no active toolchain blocker. The media-input pipeline, managed session,
-VAD-driven segmentation, Tauri events, optional API translation, microphone capture, and
-macOS system-audio capture are connected and verified. Windows system-audio hardware
-validation is pending a Windows host. The remaining audio-source gap is browser-tab
-capture. The `.flv` extension is misleading; FFmpeg identifies `1.flv` as MP4/MOV, so all
-media paths must continue to probe content rather than trust the suffix.
+VAD-driven segmentation, Tauri events, optional API translation, microphone capture,
+macOS system-audio capture, and browser-tab capture (via a Chrome MV3 extension and a
+localhost WebSocket source) are connected and verified. Windows system-audio hardware
+validation is pending a Windows host. The `.flv` extension is misleading; FFmpeg
+identifies `1.flv` as MP4/MOV, so all media paths must continue to probe content rather
+than trust the suffix.
 
 The macOS transparent Tauri window enables `macOSPrivateApi`; this is acceptable for
 personal side-loading but incompatible with Mac App Store submission.

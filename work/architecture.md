@@ -26,7 +26,11 @@ native build.
 
 ## Audio sources
 
-1. Browser tab: Chrome extension captures tab audio and sends PCM to localhost.
+1. Browser tab: the bundled Chrome MV3 extension captures the active tab's audio with
+   `chrome.tabCapture`, downsampling to 16 kHz mono f32 in an AudioWorklet, and streams it
+   to `ws://127.0.0.1:8765/`. `BrowserTabPcmSource`
+   (`desktop/src-tauri/src/audio/websocket.rs`) accepts the connection and feeds the shared
+   bounded frame path.
 2. Microphone: CPAL captures the selected native input format, downmixes it to mono, and
    uses Rubato FFT resampling before emitting 16 kHz frames.
 3. Windows system audio: WASAPI render-loopback adapter, converted from 48 kHz stereo float
@@ -88,9 +92,10 @@ field. Development environment variables remain a fallback until a credential is
 
 ## Current implementation boundary
 
-The incremental PCM contract, bounded queues, media, microphone, and system-audio sources,
-long-lived in-process whisper.cpp engine, Silero model, stable-prefix core, Tauri overlay,
-managed session, and asynchronous translation worker are connected. Every source implements
-`AudioFrameSource`; the session does not branch after source construction. The managed session
-uses rolling Silero VAD inference to close utterances after silence, with a bounded
-continuous-speech fallback. Browser-tab capture is the remaining audio-source boundary.
+The incremental PCM contract, bounded queues, media, microphone, system-audio, and
+browser-tab sources, long-lived in-process whisper.cpp engine, Silero model, stable-prefix
+core, Tauri overlay, managed session, and asynchronous translation worker are connected.
+Every source implements `AudioFrameSource`; the session does not branch after source
+construction. The managed session uses rolling Silero VAD inference to close utterances
+after silence, with a bounded continuous-speech fallback. All planned audio sources are
+implemented; the only pending hardware validation is WASAPI loopback on a Windows host.

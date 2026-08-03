@@ -3,6 +3,7 @@ use crate::audio::ffmpeg::{FfmpegPcmSource, FfmpegSourceConfig};
 use crate::audio::microphone::{available_input_devices, AudioDevice, MicrophonePcmSource};
 use crate::audio::system_audio::{available_system_audio_devices, SystemAudioPcmSource};
 use crate::audio::vad::SileroVad;
+use crate::audio::websocket::BrowserTabPcmSource;
 use crate::audio::AudioFrameSource;
 use crate::translation::{TranslationJob, TranslationWorker};
 use crate::{is_file, model_directory, project_path};
@@ -73,6 +74,7 @@ enum SessionInput {
     Media { input: PathBuf, realtime: bool },
     Microphone { device_id: Option<String> },
     SystemAudio { device_id: Option<String> },
+    BrowserTab,
 }
 
 impl SessionController {
@@ -199,6 +201,14 @@ pub fn start_system_audio_session(
 #[tauri::command]
 pub fn list_system_audio_devices() -> Result<Vec<AudioDevice>, String> {
     available_system_audio_devices()
+}
+
+#[tauri::command]
+pub fn start_browser_session(
+    app: AppHandle,
+    sessions: State<'_, SessionController>,
+) -> Result<(), String> {
+    sessions.start(app, SessionInput::BrowserTab)
 }
 
 #[tauri::command]
@@ -455,6 +465,8 @@ fn open_audio_source(input: SessionInput) -> std::io::Result<Box<dyn AudioFrameS
         SessionInput::Microphone { device_id } => MicrophonePcmSource::open(device_id.as_deref())
             .map(|source| Box::new(source) as Box<dyn AudioFrameSource>),
         SessionInput::SystemAudio { device_id } => SystemAudioPcmSource::open(device_id.as_deref())
+            .map(|source| Box::new(source) as Box<dyn AudioFrameSource>),
+        SessionInput::BrowserTab => BrowserTabPcmSource::open()
             .map(|source| Box::new(source) as Box<dyn AudioFrameSource>),
     }
 }
