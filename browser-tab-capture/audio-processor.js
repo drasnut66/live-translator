@@ -1,6 +1,10 @@
 // AudioWorkletProcessor: converts incoming 48 kHz multi-channel audio to
 // 16 kHz mono f32 and posts raw little-endian byte chunks to the main thread
 // for the WebSocket.
+//
+// The downmix uses a running accumulator so exactly sourceRate/targetRate
+// input frames produce one output sample, with inter-channel averaging. This
+// keeps the output timeline aligned with the source.
 
 class PcmProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -10,7 +14,7 @@ class PcmProcessor extends AudioWorkletProcessor {
     this.sourceRate = opts.sampleRate || 48000;
     this.channels = opts.channels || 1;
     this.ratio = this.sourceRate / this.targetRate;
-    this.samples = 0; // consumed target-rate samples
+    this.acc = 0; // fractional input-frame position
     this.buffer = []; // mono target-rate samples awaiting a 20 ms chunk
   }
 
@@ -26,14 +30,19 @@ class PcmProcessor extends AudioWorkletProcessor {
     }
     if (channelData.length === 0) return true;
 
+    // Step through input frames, emitting one output sample every `ratio`
+    // frames, accumulated across the block boundary.
     for (let i = 0; i < frames; i++) {
-      const sourceIndex = Math.floor(i / this.ratio);
-      let sample = 0;
+      let mono = 0;
       for (const channel of channelData) {
-        sample += channel[sourceIndex];
+        mono += channel[i];
       }
-      sample /= channelData.length;
-      this.buffer.push(sample);
+      mono /= channelData.length;
+      this.acc += 1;
+      if (this.acc >= this.ratio) {
+        this.buffer.push(mono);
+        this.acc -= this.ratio;
+      }
     }
 
     // 20 ms at 16 kHz = 320 samples.
