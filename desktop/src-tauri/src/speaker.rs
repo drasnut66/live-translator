@@ -28,7 +28,10 @@ pub struct SpeakerAssignment {
 
 /// How much buffered audio (seconds) to run through diarization at once.
 /// Larger batches improve clustering stability but delay labels.
-const BATCH_SECONDS: f64 = 20.0;
+const BATCH_SECONDS: f64 = 10.0;
+/// Minimum gap (seconds) between diarization runs, to keep the CPU cost of the
+/// ONNX pipeline off the ASR thread.
+const RUN_INTERVAL_SECONDS: f64 = 30.0;
 /// Keep at most this much audio buffered so a long stream does not grow memory.
 const MAX_BUFFER_SECONDS: f64 = 60.0;
 
@@ -93,6 +96,11 @@ fn run_worker(
     result_tx: mpsc::Sender<SpeakerAssignment>,
     stop: Arc<AtomicBool>,
 ) {
+    // Bound the diarization CPU usage so the ASR thread (whisper + Metal) is
+    // never starved. OpenBLAS would otherwise spawn a thread per core and
+    // saturate the machine on the long-running pipeline.
+    std::env::set_var("OPENBLAS_NUM_THREADS", "1");
+    std::env::set_var("OMP_NUM_THREADS", "1");
     let mut pipeline: Option<OwnedDiarizationPipeline> = None;
     let mut buffer: Vec<f32> = Vec::new();
     let mut buffered_sec = 0.0_f64;
@@ -101,6 +109,7 @@ fn run_worker(
     let mut label_map: HashMap<String, u32> = HashMap::new();
     let mut next_id: u32 = 0;
 
+    let mut last_run = std::time::Instant::now();
     while !stop.load(Ordering::Acquire) {
         let job = match rx.recv() {
             Ok(job) => job,
@@ -125,7 +134,12 @@ fn run_worker(
             }
         }
 
-        if buffered_sec >= BATCH_SECONDS && !pending.is_empty() {
+        // Run at most once every RUN_INTERVAL to keep the diarization CPU cost
+        // off the ASR thread, and only once we have a meaningful batch.
+        if buffered_sec >= BATCH_SECONDS
+            && !pending.is_empty()
+            && last_run.elapsed().as_secs_f64() >= RUN_INTERVAL_SECONDS
+        {
             if pipeline.is_none() {
                 match OwnedDiarizationPipeline::from_dir(
                     &models_dir,
@@ -159,6 +173,7 @@ fn run_worker(
             pending.clear();
             buffer.clear();
             buffered_sec = 0.0;
+            last_run = std::time::Instant::now();
         }
     }
 }
