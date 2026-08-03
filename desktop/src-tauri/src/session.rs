@@ -231,13 +231,21 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
         }
     };
 
-    let mut engine = match WhisperEngine::load(model, WhisperEngineConfig::default()) {
+    let mut engine = match WhisperEngine::load(&model, WhisperEngineConfig::default()) {
         Ok(engine) => engine,
         Err(error) => {
             emit_status(&app, "error", Some(error.to_string()));
             return;
         }
     };
+    emit_status(
+        &app,
+        "loading",
+        Some(format!(
+            "loaded {}",
+            model.file_name().and_then(|name| name.to_str()).unwrap_or("whisper model")
+        )),
+    );
 
     let vad_model = model_directory(&app).join(VAD_MODEL_FILE);
     if !is_file(&vad_model) {

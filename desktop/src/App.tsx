@@ -130,6 +130,7 @@ function App() {
   const [translation, setTranslation] = useState("意大利面可以搭配各种口味，不是很好吗？");
   const [sessionState, setSessionState] = useState<SessionStatusPayload["state"]>("stopped");
   const [sessionMessage, setSessionMessage] = useState("");
+  const [activeModel, setActiveModel] = useState("whisper");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([
     {
@@ -190,6 +191,8 @@ function App() {
           listen<SessionStatusPayload>("session:status", ({ payload }) => {
             setSessionState(payload.state);
             setSessionMessage(payload.message ?? "");
+            const loaded = payload.message?.match(/loaded (.+)/);
+            if (loaded) setActiveModel(loaded[1]);
             if (payload.state === "loading" || payload.state === "running") {
               setRunning(true);
             } else {
@@ -345,7 +348,14 @@ function App() {
       style={{ "--overlay-opacity": opacity / 100 } as CSSProperties}
     >
       <header className="toolbar" data-tauri-drag-region>
-        <div className="identity" data-tauri-drag-region>
+        <div
+          className="identity"
+          data-tauri-drag-region
+          onMouseDown={(event) => {
+            if (event.button !== 0) return;
+            void getCurrentWindow().startDragging();
+          }}
+        >
           <span className={`status-light ${ready ? "is-ready" : ""} ${sessionState === "running" ? "is-listening" : ""}`} />
           <Languages size={16} strokeWidth={2.2} />
           <strong>日中同传</strong>
@@ -441,9 +451,9 @@ function App() {
       <footer className="statusbar" title={sessionMessage || undefined}>
         <span>{sessionLabel(sessionState, running)}</span>
         <span className="status-divider" />
-        <span>large-v3-turbo q5</span>
+        <span>{activeModel}</span>
         <span className="status-divider" />
-        <span>RTF 0.11</span>
+        <span>{sessionMessage || "待机"}</span>
         <span className="spacer" />
         <span className="latency">{latencyMs === null ? "--" : `${latencyMs}ms`}</span>
       </footer>

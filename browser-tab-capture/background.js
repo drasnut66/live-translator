@@ -29,6 +29,7 @@ function ensureOffscreenDocument() {
 
 async function startCapture() {
   const tab = await activeTab();
+  console.log("capturing tab", tab.id, tab.url);
   const streamId = await new Promise((resolve, reject) => {
     chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (id) => {
       const error = chrome.runtime.lastError;
@@ -40,20 +41,23 @@ async function startCapture() {
 
   await ensureOffscreenDocument();
 
-  await new Promise((resolve, reject) => {
+  const response = await new Promise((resolve) => {
     chrome.runtime.sendMessage(
       { type: "start", streamId, tabId: tab.id },
-      (response) => {
+      (message) => {
         const error = chrome.runtime.lastError;
-        if (error) return reject(new Error(error.message));
-        if (response && response.error) return reject(new Error(response.error));
-        resolve();
+        if (error) return resolve({ error: error.message });
+        resolve(message || {});
       }
     );
   });
+  if (response && response.error) {
+    throw new Error(`offscreen failed: ${response.error}`);
+  }
 
   capturedTabId = tab.id;
   await chrome.action.setBadgeText({ text: "ON" });
+  console.log("capture started");
 }
 
 async function stopCapture() {

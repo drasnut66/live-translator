@@ -33,7 +33,6 @@ async function startCapture(streamId) {
     await stopCapture();
   }
 
-  const useUserGesture = true; // getDisplayMedia not used; tabCapture stream works directly
   stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       mandatory: {
@@ -44,13 +43,14 @@ async function startCapture(streamId) {
     video: false,
   });
   if (!stream) throw new Error("getUserMedia returned no stream");
+  console.log("got tab media stream");
 
   audioContext = new AudioContext({ sampleRate: 48000 });
   sourceNode = audioContext.createMediaStreamSource(stream);
   await audioContext.audioWorklet.addModule("audio-processor.js");
   const worklet = new AudioWorkletNode(audioContext, "pcm-processor", {
     numberOfInputs: 1,
-    numberOfOutputs: 1,
+    numberOfOutputs: 0,
     outputChannelCount: [1],
     processorOptions: {
       targetRate: TARGET_RATE,
@@ -63,24 +63,34 @@ async function startCapture(streamId) {
     socket.send(event.data);
   };
   sourceNode.connect(worklet);
-  worklet.connect(audioContext.destination); // keep the graph alive
+  // Route the original audio back to the speakers so the user still hears the
+  // tab. tabCapture redirects the tab's audio into this stream, so without
+  // this the tab becomes silent.
+  sourceNode.connect(audioContext.destination);
 
   context = { worklet };
-  connectSocket();
+  await connectSocket();
+  console.log("capture running, websocket open");
 }
 
 function connectSocket() {
-  socket = new WebSocket(WS_URL);
-  socket.binaryType = "arraybuffer";
-  socket.onopen = () => {
-    wsOpen = true;
-  };
-  socket.onclose = () => {
-    wsOpen = false;
-  };
-  socket.onerror = () => {
-    wsOpen = false;
-  };
+  return new Promise((resolve, reject) => {
+    socket = new WebSocket(WS_URL);
+    socket.binaryType = "arraybuffer";
+    socket.onopen = () => {
+      wsOpen = true;
+      resolve();
+    };
+    socket.onerror = () => {
+      wsOpen = false;
+    };
+    socket.onclose = () => {
+      wsOpen = false;
+    };
+    setTimeout(() => {
+      if (!wsOpen) reject(new Error(`websocket to ${WS_URL} did not open`));
+    }, 5000);
+  });
 }
 
 async function stopCapture() {
