@@ -99,14 +99,19 @@ cargo test
 ### Local model directory
 
 Models are deliberately not committed to GitHub. Put these files in `models/` for a
-development checkout:
+development checkout. The runtime needs whisper-small by default and falls back to
+large-v3-turbo when small is absent; Silero VAD is always required:
 
-- `ggml-large-v3-turbo-q5_0.bin`
-- `ggml-silero-v6.2.0.bin`
+- `ggml-small.bin` — default streaming model (reaches 1.0x realtime on Apple Silicon)
+- `ggml-large-v3-turbo-q5_0.bin` — optional, higher-accuracy offline runs
+- `ggml-silero-v6.2.0.bin` — required VAD model
 
-The runtime also accepts `LIVE_TRANSLATOR_MODEL_DIR` to point at an alternate directory.
-This is the preferred installation path for packaged applications on both Mac and
-Windows. Never commit API keys or model binaries.
+`scripts/download_models.sh` fetches all three with checksum verification. Set
+`LIVE_TRANSLATOR_WHISPER_MODEL` to a filename in the model directory (for example
+`ggml-large-v3-turbo-q5_0.bin`) to override the default model. The runtime also accepts
+`LIVE_TRANSLATOR_MODEL_DIR` to point at an alternate directory. This is the preferred
+installation path for packaged applications on both Mac and Windows. Never commit API
+keys or model binaries.
 
 ### Media smoke test
 
@@ -126,7 +131,7 @@ revisions against a media file without loading the model for every revision:
 
 ```sh
 cargo run --manifest-path desktop/src-tauri/Cargo.toml --example live_asr_probe -- \
-  models/ggml-large-v3-turbo-q5_0.bin /path/to/japanese-video.mp4 12
+  models/ggml-small.bin /path/to/japanese-video.mp4 12
 ```
 
 The `whisper-rs` wrapper statically compiles whisper.cpp, enables Metal on macOS, and

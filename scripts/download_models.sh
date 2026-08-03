@@ -26,6 +26,15 @@ download() {
     fi
 }
 
+# Required: whisper-small is the default streaming model. It reaches 1.0x realtime
+# on Apple Silicon while keeping accurate Japanese output.
+download \
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin" \
+    "$MODEL_DIR/ggml-small.bin" \
+    "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
+
+# Optional: large-v3-turbo for higher-accuracy offline runs. Streaming at 0.49x
+# realtime on Apple Silicon, so it is not the default.
 download \
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin" \
     "$MODEL_DIR/ggml-large-v3-turbo-q5_0.bin" \

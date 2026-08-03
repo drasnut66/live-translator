@@ -93,3 +93,23 @@ correct; the difference is a CoreAudio playback-path routing detail on this mach
 Validation must therefore use a full system-output playback path such as `ffplay`
 or a browser rather than `afplay`. Windows WASAPI hardware validation remains to be
 run on a Windows host.
+
+## Streaming model comparison (measured 2026-08-03)
+
+`examples/soak_probe.rs` replayed the same managed-session loop against three Whisper
+quantized models on Apple M3 with Metal. All runs used `1.flv` (Japanese speech) and the
+rolling Silero VAD; 120-second input in realtime mode.
+
+| Model | Realtime factor | Avg decode | RSS peak | Memory trend |
+|---|---|---|---|---|
+| large-v3-turbo q5_0 | 0.49x | 2136 ms | 791 MB | flat (-40 MB) |
+| small (q5_0) | 1.00x | 484 ms | 719 MB | flat (-56 MB) |
+| base (q5_0) | 1.00x | 262 ms | 301 MB | flat (-51 MB) |
+
+The large model's batch benchmark factor (8.8x) does not transfer to the streaming
+cadence: a ~1-2 s window decoded every second adds up to ~0.49x. small and base both
+reach exactly 1.0x on this machine; base has the most headroom but noticeably worse
+Japanese accuracy. On the first eight seconds of `1.flv`, base transcribed a speaker
+name as `女子さん` (large/small: `ジョージュさん` / `ジョジュさん`) and dropped the final
+clause. The default runtime model is therefore whisper-small, with large-v3-turbo
+selectable via `LIVE_TRANSLATOR_WHISPER_MODEL` for offline accuracy runs.

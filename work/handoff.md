@@ -59,6 +59,12 @@ Date: 2026-08-03
   `peak=0.0885` and zero dropped samples. `afplay` did not route into the SCK loopback on
   this machine, so playback-path choice matters during validation. See
   `benchmark-2026-08-03.md`.
+- Measured streaming model performance with `examples/soak_probe.rs` on Apple M3
+  (Metal): large-v3-turbo runs at 0.49x realtime, whisper-small and whisper-base both at
+  1.00x. base's Japanese accuracy is noticeably worse, so whisper-small is now the
+  default runtime model with large-v3-turbo selectable via
+  `LIVE_TRANSLATOR_WHISPER_MODEL`. Memory stayed flat in all runs. See
+  `benchmark-2026-08-03.md`.
 
 ## Environment status
 
@@ -67,7 +73,8 @@ Date: 2026-08-03
 - Rust 1.97.1 and Cargo 1.97.1 are available.
 - FFmpeg 8.1.2 is available.
 - whisper.cpp was built with Metal in the local development checkout.
-- `ggml-large-v3-turbo-q5_0.bin` and `ggml-silero-v6.2.0.bin` are present.
+- `ggml-small.bin` (default), `ggml-large-v3-turbo-q5_0.bin` (optional), and
+  `ggml-silero-v6.2.0.bin` are present.
 - Core tests, the production web build, and the Tauri Rust check pass. macOS system-audio
   capture is verified non-silent; Windows WASAPI hardware validation remains pending.
 

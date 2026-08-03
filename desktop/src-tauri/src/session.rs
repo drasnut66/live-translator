@@ -21,7 +21,8 @@ pub const SESSION_STATUS_EVENT: &str = "session:status";
 pub const SUBTITLE_PARTIAL_EVENT: &str = "subtitle:partial";
 pub const SUBTITLE_COMMIT_EVENT: &str = "subtitle:commit";
 
-const MODEL_FILE: &str = "ggml-large-v3-turbo-q5_0.bin";
+const DEFAULT_MODEL_FILE: &str = "ggml-small.bin";
+const OPTIONAL_LARGE_MODEL_FILE: &str = "ggml-large-v3-turbo-q5_0.bin";
 const VAD_MODEL_FILE: &str = "ggml-silero-v6.2.0.bin";
 const MINIMUM_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 3 / 2;
 const STEP_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize;
@@ -208,15 +209,17 @@ pub fn stop_session(sessions: State<'_, SessionController>) -> Result<(), String
 fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
     emit_status(&app, "loading", None);
 
-    let model = model_directory(&app).join(MODEL_FILE);
-    if !is_file(&model) {
-        emit_status(
-            &app,
-            "error",
-            Some(format!("Whisper model is missing: {}", model.display())),
-        );
-        return;
-    }
+    let model = match select_whisper_model(&app) {
+        Some(model) => model,
+        None => {
+            emit_status(
+                &app,
+                "error",
+                Some("no Whisper model found; expected ggml-small.bin or a model from LIVE_TRANSLATOR_WHISPER_MODEL".to_owned()),
+            );
+            return;
+        }
+    };
 
     let mut engine = match WhisperEngine::load(model, WhisperEngineConfig::default()) {
         Ok(engine) => engine,
@@ -558,6 +561,29 @@ fn looks_like_network_url(input: &Path) -> bool {
             .to_string_lossy()
             .get(..7)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("rtsp://"))
+}
+
+fn select_whisper_model(app: &AppHandle) -> Option<PathBuf> {
+    let directory = model_directory(app);
+    if let Some(name) = std::env::var("LIVE_TRANSLATOR_WHISPER_MODEL").ok() {
+        let name = name.trim().to_owned();
+        if !name.is_empty() {
+            let candidate = directory.join(&name);
+            if is_file(&candidate) {
+                return Some(candidate);
+            }
+            return None;
+        }
+    }
+    let small = directory.join(DEFAULT_MODEL_FILE);
+    if is_file(&small) {
+        return Some(small);
+    }
+    let large = directory.join(OPTIONAL_LARGE_MODEL_FILE);
+    if is_file(&large) {
+        return Some(large);
+    }
+    None
 }
 
 #[cfg(test)]
