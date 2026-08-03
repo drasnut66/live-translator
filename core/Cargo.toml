@@ -1,0 +1,12 @@
+[package]
+name = "live-translator-core"
+version = "0.1.0"
+edition = "2021"
+description = "Streaming subtitle coordination for the personal live translator"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "forbid"

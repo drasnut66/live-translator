@@ -1,0 +1,28 @@
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local model and runtime data
+/models/*.bin
+/models/*.sha256
+/runtime/
+
+# Build output and local toolchains
+/build/
+/core/target/
+/desktop/node_modules/
+/desktop/dist/
+/desktop/src-tauri/target/
+/desktop/src-tauri/gen/
+
+# Local media and generated transcription output
+*.flv
+/work/test-transcription.*
+
+# Logs and secrets
+*.log
+.env
+.env.*
+!.env.example

@@ -1,0 +1,369 @@
+:root {
+  font-family: Inter, "SF Pro Text", "Segoe UI", "Noto Sans JP", "Noto Sans SC", sans-serif;
+  color: #f7f5f0;
+  background: transparent;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid #6dd6cb;
+  outline-offset: 2px;
+}
+
+.overlay {
+  position: relative;
+  display: grid;
+  grid-template-rows: 42px minmax(116px, 1fr) 28px;
+  width: 100%;
+  height: 100%;
+  min-width: 460px;
+  min-height: 186px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  background: rgb(27 28 29 / var(--overlay-opacity, 0.92));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.overlay.is-locked {
+  border-color: rgba(109, 214, 203, 0.4);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(11, 12, 13, 0.58);
+  user-select: none;
+}
+
+.identity,
+.controls,
+.source-select,
+.statusbar,
+.quick-settings,
+.quick-settings label {
+  display: flex;
+  align-items: center;
+}
+
+.identity {
+  min-width: 0;
+  gap: 7px;
+  color: #f7f5f0;
+  white-space: nowrap;
+}
+
+.identity strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.runtime {
+  overflow: hidden;
+  color: #9fa3a5;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+
+.status-light {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #d69c56;
+  box-shadow: 0 0 0 3px rgba(214, 156, 86, 0.12);
+}
+
+.status-light.is-ready {
+  background: #74c68d;
+  box-shadow: 0 0 0 3px rgba(116, 198, 141, 0.12);
+}
+
+.controls {
+  flex: 0 0 auto;
+  gap: 3px;
+}
+
+.source-select {
+  width: 132px;
+  height: 28px;
+  gap: 6px;
+  margin-right: 4px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  color: #d8dbdc;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.source-select select,
+.quick-settings select {
+  min-width: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.source-select select {
+  width: 100%;
+  font-size: 11px;
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  color: #aeb2b4;
+  background: transparent;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.icon-button.is-active {
+  color: #6dd6cb;
+  background: rgba(109, 214, 203, 0.12);
+}
+
+.icon-button.danger:hover {
+  color: #ffb7aa;
+  background: rgba(225, 99, 79, 0.17);
+}
+
+.control-separator {
+  width: 1px;
+  height: 17px;
+  margin: 0 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.subtitle-surface {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-rows: repeat(2, minmax(48px, 1fr));
+  align-items: center;
+  min-height: 0;
+  padding: 7px 18px 7px 13px;
+}
+
+.language-marker {
+  align-self: start;
+  margin-top: 7px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.language-marker.ja {
+  color: #6dd6cb;
+}
+
+.language-marker.zh {
+  color: #e8b96c;
+}
+
+.subtitle {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.subtitle.japanese {
+  align-self: end;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+  color: #f5f2ea;
+  font-size: 18px;
+  font-weight: 560;
+}
+
+.subtitle.chinese {
+  align-self: start;
+  padding-top: 8px;
+  color: #fff8e8;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.partial {
+  color: #92989a;
+}
+
+.statusbar {
+  gap: 8px;
+  min-width: 0;
+  padding: 0 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.075);
+  color: #858a8c;
+  background: rgba(11, 12, 13, 0.34);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.status-divider {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #5e6264;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.latency {
+  color: #74c68d;
+}
+
+.quick-settings {
+  position: absolute;
+  right: 42px;
+  top: 38px;
+  z-index: 3;
+  gap: 15px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #c9ccce;
+  background: rgba(21, 22, 23, 0.98);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+}
+
+.quick-settings label {
+  gap: 7px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.quick-settings output {
+  width: 31px;
+  color: #8f9496;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  text-align: right;
+}
+
+.quick-settings select {
+  max-width: 145px;
+  color: #f7f5f0;
+  font-size: 10px;
+}
+
+.opacity-control input {
+  width: 80px;
+  accent-color: #6dd6cb;
+}
+
+.subtitle-history {
+  position: absolute;
+  inset: 42px 0 28px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 18px;
+  overflow-y: auto;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(19, 20, 21, 0.985);
+}
+
+.history-time {
+  padding-top: 3px;
+  color: #777d7f;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+}
+
+.subtitle-history p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.subtitle-history p:first-child {
+  color: #e7e5df;
+  font-size: 14px;
+}
+
+.subtitle-history p:last-child {
+  margin-top: 4px;
+  color: #e8b96c;
+  font-size: 13px;
+}
+
+@media (max-width: 620px) {
+  .overlay {
+    min-width: 420px;
+  }
+
+  .runtime,
+  .source-select svg,
+  .controls .icon-button:nth-of-type(2) {
+    display: none;
+  }
+
+  .source-select {
+    width: 108px;
+  }
+
+  .subtitle.japanese {
+    font-size: 16px;
+  }
+
+  .subtitle.chinese {
+    font-size: 15px;
+  }
+
+  .quick-settings {
+    right: 8px;
+    gap: 9px;
+  }
+
+  .opacity-control input {
+    width: 58px;
+  }
+}
