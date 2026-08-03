@@ -16,6 +16,10 @@ Date: 2026-08-03
 - Added incremental `s16le` PCM frame assembly, bounded queue accounting, and a
   cross-platform FFmpeg source that reads files and network streams without creating
   intermediate WAV files.
+- Added a long-lived, statically linked whisper.cpp engine through `whisper-rs`, with
+  Metal enabled on macOS and the same CPU-capable API on Windows.
+- Verified repeated Japanese revisions and final stable-prefix output against the first
+  eight seconds of `1.flv` using `examples/live_asr_probe.rs`.
 - Added the Tauri 2 + React desktop overlay and connected it to Rust runtime status.
 
 ## Environment status
@@ -30,17 +34,18 @@ Date: 2026-08-03
 
 ## Next executable tasks
 
-1. Add the long-lived whisper.cpp FFI worker and connect it to the bounded audio queue.
+1. Wrap the proven FFmpeg/Whisper loop in a managed Tauri session.
 2. Feed ASR revisions through the stable-prefix coordinator into Tauri events.
-3. Implement the OpenAI-compatible translation provider with cancellation and timeout.
-4. Add microphone capture, then isolate WASAPI and ScreenCaptureKit system-audio adapters.
+3. Use Silero VAD to rotate utterance buffers and commit sentence tails.
+4. Implement the OpenAI-compatible translation provider with cancellation and timeout.
+5. Add microphone capture, then isolate WASAPI and ScreenCaptureKit system-audio adapters.
 
 ## Current blockers
 
-There is no active toolchain blocker. The main engineering gap is the live audio-to-ASR
-worker: the current script is batch-oriented even though inference is faster than real
-time. The `.flv` extension is misleading; FFmpeg identifies `1.flv` as MP4/MOV, so all
-media paths must continue to probe content rather than trust the suffix.
+There is no active toolchain blocker. The in-process ASR loop is proven in the developer
+probe; production session lifetime, VAD-driven segmentation, Tauri events, and API
+translation remain. The `.flv` extension is misleading; FFmpeg identifies `1.flv` as
+MP4/MOV, so all media paths must continue to probe content rather than trust the suffix.
 
 The macOS transparent Tauri window enables `macOSPrivateApi`; this is acceptable for
 personal side-loading but incompatible with Mac App Store submission.

@@ -47,7 +47,7 @@ jobs:
         working-directory: desktop
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
         working-directory: desktop
-      - run: cargo check --manifest-path src-tauri/Cargo.toml
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
         working-directory: desktop
       - name: Validate shell helpers
         if: runner.os == 'macOS'

@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
+pub mod asr;
 pub mod audio;
 
 #[derive(Serialize)]
@@ -46,23 +47,6 @@ fn model_directory(app: &tauri::AppHandle) -> PathBuf {
         .join("models")
 }
 
-fn whisper_cli_path(app: &tauri::AppHandle) -> PathBuf {
-    if let Some(path) = configured_directory("LIVE_TRANSLATOR_WHISPER_CLI") {
-        return path;
-    }
-
-    let executable = format!("whisper-cli{}", std::env::consts::EXE_SUFFIX);
-
-    if cfg!(debug_assertions) {
-        return project_path("build/whisper.cpp/bin").join(executable);
-    }
-
-    app.path()
-        .resource_dir()
-        .unwrap_or_else(|_| project_path("build/whisper.cpp/bin"))
-        .join(executable)
-}
-
 fn is_file(path: impl AsRef<Path>) -> bool {
     path.as_ref().is_file()
 }
@@ -74,7 +58,7 @@ fn runtime_status(app: tauri::AppHandle) -> RuntimeStatus {
         platform: std::env::consts::OS,
         model_ready: is_file(models.join("ggml-large-v3-turbo-q5_0.bin")),
         vad_ready: is_file(models.join("ggml-silero-v6.2.0.bin")),
-        whisper_ready: is_file(whisper_cli_path(&app)),
+        whisper_ready: true,
     }
 }
 

@@ -7,10 +7,10 @@ overlay. It combines a Tauri 2 desktop UI with a local Whisper backend and a plu
 translation provider. The codebase is intentionally small and keeps large models,
 platform binaries, and build caches outside Git.
 
-> Current status: the desktop overlay, incremental FFmpeg PCM source, local Japanese
-> ASR smoke test, and stable-prefix streaming core are implemented. The long-lived
-> whisper.cpp worker and network translation call are the next milestone; the Chinese
-> line in the UI is still fixture data.
+> Current status: the desktop overlay, incremental FFmpeg PCM source, in-process
+> long-lived whisper.cpp engine, and stable-prefix streaming core are implemented. Tauri
+> session events and network translation are the next milestone; the Chinese line in the
+> UI is still fixture data.
 
 ## Features in this milestone
 
@@ -21,6 +21,7 @@ platform binaries, and build caches outside Git.
 - whisper.cpp + Metal local ASR smoke test with Silero VAD.
 - Incremental FFmpeg source for files, HLS/RTSP URLs, and other FFmpeg inputs.
 - 20 ms PCM frame assembly and bounded audio queue with dropped-frame accounting.
+- Statically linked whisper.cpp engine with Metal on macOS and CPU fallback on Windows.
 - Token-prefix stability coordinator with duplicate and regression protection.
 - GitHub Actions checks the core on macOS, Windows, and Linux, with full desktop checks
   on macOS and Windows.
@@ -58,7 +59,7 @@ not vendored into the published project.
 - Node.js 20 or newer and npm.
 - Rust stable and Cargo.
 - FFmpeg 6 or newer for media smoke tests.
-- A local `whisper-cli` build for ASR experiments.
+- An optional local `whisper-cli` build for the batch smoke-test script.
 - The Whisper and Silero model files described below.
 
 ### Install dependencies
@@ -106,10 +107,22 @@ Windows. Never commit API keys or model binaries.
 ```
 
 The script probes the actual container, decodes the first audio stream to 16 kHz mono,
-and writes text/SRT/JSON next to the repository-level working notes. It does not yet
-represent the live streaming worker. The native FFmpeg source in
-`desktop/src-tauri/src/audio/ffmpeg.rs` performs the same decode incrementally and is
-the input boundary for the upcoming ASR worker.
+and writes text/SRT/JSON next to the repository-level working notes. It remains a batch
+benchmark. The native FFmpeg source in `desktop/src-tauri/src/audio/ffmpeg.rs` performs
+the decode incrementally for the in-process ASR engine.
+
+### Incremental ASR probe
+
+The development probe exercises FFmpeg, the in-process Whisper engine, and stable-prefix
+revisions against a media file without loading the model for every revision:
+
+```sh
+cargo run --manifest-path desktop/src-tauri/Cargo.toml --example live_asr_probe -- \
+  models/ggml-large-v3-turbo-q5_0.bin /path/to/japanese-video.mp4 12
+```
+
+The `whisper-rs` wrapper statically compiles whisper.cpp, enables Metal on macOS, and
+uses the same Rust API with a CPU backend on Windows.
 
 ## Translation providers
 
@@ -126,11 +139,14 @@ initial target.
 
 The macOS overlay enables Tauri's `macOSPrivateApi` because true transparent windows
 need it. This is suitable for personal side-loading but is not compatible with Mac App
-Store submission. Windows uses the same source tree and does not require that API.
+Store submission. The minimum macOS version is 10.15 because the statically linked
+whisper.cpp runtime uses C++ filesystem APIs introduced there. Windows uses the same
+source tree and does not require the private API.
 
 ## License and references
 
 The application code is released under the MIT License. Upstream projects remain under
 their own licenses and are reference material, not copied source in this repository.
+The distributed ASR binary includes third-party code listed in `THIRD_PARTY_NOTICES.md`.
 See `work/decisions.md` for the boundary decisions and `work/handoff.md` for the next
 implementation tasks.

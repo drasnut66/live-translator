@@ -34,3 +34,21 @@ The overlay needs true window transparency, so `app.macOSPrivateApi` is enabled 
 Tauri configuration. This prevents Mac App Store acceptance. The target is personal
 side-loaded use; if distribution goals change, replace the transparent native window
 before attempting an App Store release.
+
+## D007: Statically link whisper.cpp through a pinned Rust wrapper
+
+The desktop backend pins `whisper-rs` 0.16.0 instead of controlling `whisper-cli` as a
+long-running subprocess. This keeps model state in the application process, exposes
+token IDs for stable-prefix comparison, and produces one API on macOS and Windows.
+Metal is compiled on macOS; Windows initially uses CPU inference. The wrapper is
+Unlicense and its bundled whisper.cpp code is MIT; both are recorded in
+`THIRD_PARTY_NOTICES.md`.
+
+## D008: Require macOS 10.15 or newer
+
+The bundled whisper.cpp/ggml runtime uses C++ filesystem APIs unavailable under the
+older macOS 10.13 deployment target. Tauri is explicitly configured with
+`bundle.macOS.minimumSystemVersion = 10.15`, which keeps release and CI builds aligned
+and still supports Intel and Apple Silicon Macs from the intended usage range. The
+repository Cargo configuration exports the same deployment target so CMake-based Rust
+dependencies receive it before the application build script runs.

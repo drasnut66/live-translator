@@ -33,9 +33,22 @@ Outputs:
 - `test-transcription.json`
 
 The result demonstrates sufficient raw inference throughput for streaming on this Mac.
-It does not yet measure first-partial or stable-commit latency because the current media
-runner performs a batch CLI invocation. Those measurements belong to the long-lived
-streaming worker milestone.
+
+## In-process streaming probe
+
+The first eight seconds were also decoded through `examples/live_asr_probe.rs` using a
+single model context and state, a 1.5-second minimum window, one-second revision cadence,
+and an eight-second rolling maximum. It produced seven incremental Japanese hypotheses.
+The first input-timeline partial appeared at 1500 ms and the stable-prefix coordinator
+finished with:
+
+```text
+はい、ということで2つ目のお題に行きたいと思います。いいですかジョージュさん?どうぞ!こちらになります。お題お願いします。
+```
+
+The debug run reported 5.941 seconds for its one-time embedded Metal library load.
+Per-revision wall latency is not yet instrumented, so this result verifies the streaming
+call path and model reuse rather than the sub-900 ms acceptance target.
 
 ## Model checksums
 

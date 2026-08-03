@@ -79,8 +79,9 @@ optional. API keys are stored in the OS credential store, not in SQLite or JSON.
 
 ## Current implementation boundary
 
-The incremental PCM contract, bounded queue, media decoder, local whisper.cpp runtime,
-Silero VAD, stable-prefix core, and Tauri overlay have been verified. The Chinese line
-is still fixture data. No API key is read and no network translation request is made in
-the current milestone. The next boundary is a long-lived whisper.cpp worker that
-consumes `FfmpegPcmSource::next_frame()` without relaunching a CLI process per chunk.
+The incremental PCM contract, bounded queue, media decoder, long-lived in-process
+whisper.cpp engine, Silero model, stable-prefix core, and Tauri overlay have been
+verified. The ASR probe consumes `FfmpegPcmSource::next_frame()` without relaunching a
+CLI process or reloading model weights. The Chinese line is still fixture data. The next
+boundary is a managed Tauri session that emits partial/commit events and uses Silero VAD
+to rotate utterance buffers before translation.

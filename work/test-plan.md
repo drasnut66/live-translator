@@ -20,8 +20,10 @@ Status: completed for the full 356.08-second test file. See
 - Arbitrary FFmpeg stdout read boundaries produce exact 20 ms, 16 kHz mono frames.
 - A final partial frame flushes complete samples and ignores a truncated byte.
 - A full audio queue drops the oldest frame and increments its drop counter.
-- First partial subtitle latency.
-- Stable Japanese commit latency.
+- Repeated in-process Japanese partials and a final stable-prefix commit. Functional
+  path passed on the first eight seconds of `1.flv`; wall latency remains to instrument.
+- First partial subtitle wall latency.
+- Stable Japanese commit wall latency.
 - Chinese translation latency.
 - Revision count per segment.
 - Audio queue depth and dropped stale partial jobs.
