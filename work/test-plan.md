@@ -77,5 +77,13 @@ with Metal, stable-prefix coordinator).
   smaller model (whisper-small/base) or a longer decode cadence; this is now a
   data-driven model-selection decision.
 
+A follow-up run with whisper-small (the new default) over the same 356 s input reached
+exactly 1.00x realtime (356000 ms input in 355641 ms wall time), average decode
+472 ms, RSS peak 720 MB, and a flat memory trend (-55 MB). Memory, queue health, and
+sustained realtime processing are therefore confirmed for the default model. The
+first-partial latency target (<900 ms) is measured on the input timeline (observed
+1500 ms); wall-clock latency through the full Tauri session remains to be instrumented
+from the new `wall_ms` event fields.
+
 Streaming wall latency, translation latency, API recovery, Windows microphone hardware,
 and system-audio checks remain open.
