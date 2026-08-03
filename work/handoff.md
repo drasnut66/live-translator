@@ -54,6 +54,11 @@ Date: 2026-08-03
   account, sends `POST /v2/translate` JSON with the `DeepL-Auth-Key` header, and targets `ZH`.
 - Assessed local NLLB/CTranslate2 availability: no runtime package or model assets are present
   in this workspace, so local-provider integration remains a model-distribution decision.
+- Verified macOS system-audio capture with audible output: after granting Screen Recording
+  permission to the probe binary, an `ffplay`-played 880 Hz fixture produced 5000 ms with
+  `peak=0.0885` and zero dropped samples. `afplay` did not route into the SCK loopback on
+  this machine, so playback-path choice matters during validation. See
+  `benchmark-2026-08-03.md`.
 
 ## Environment status
 
@@ -63,23 +68,25 @@ Date: 2026-08-03
 - FFmpeg 8.1.2 is available.
 - whisper.cpp was built with Metal in the local development checkout.
 - `ggml-large-v3-turbo-q5_0.bin` and `ggml-silero-v6.2.0.bin` are present.
-- Core tests, the production web build, and the Tauri Rust check pass. System-audio hardware
-  validation remains pending on both platforms.
+- Core tests, the production web build, and the Tauri Rust check pass. macOS system-audio
+  capture is verified non-silent; Windows WASAPI hardware validation remains pending.
 
 ## Next executable tasks
 
-1. Grant Screen Recording permission and verify the macOS system-audio probe with audible
-   output; run the equivalent WASAPI hardware probe on Windows.
-2. Evaluate a local NLLB/CTranslate2 runtime and model distribution strategy.
-3. Run a 30-minute microphone/session soak test and record latency, memory, and drop counts.
+1. Run the equivalent WASAPI hardware probe on a Windows host.
+2. Record the local-provider decision (cloud DeepL free tier, no local NLLB) in
+   `decisions.md`.
+3. Instrument streaming wall latency and run a 30-minute microphone/session soak test,
+   recording latency, memory, and drop counts.
 
 ## Current blockers
 
 There is no active toolchain blocker. The media-input pipeline, managed session,
-VAD-driven segmentation, Tauri events, and optional API translation are connected. The
-remaining audio-source gap is browser-tab capture. The `.flv` extension is misleading; FFmpeg
-identifies `1.flv` as MP4/MOV, so all media paths must continue to probe content rather than
-trust the suffix.
+VAD-driven segmentation, Tauri events, optional API translation, microphone capture, and
+macOS system-audio capture are connected and verified. Windows system-audio hardware
+validation is pending a Windows host. The remaining audio-source gap is browser-tab
+capture. The `.flv` extension is misleading; FFmpeg identifies `1.flv` as MP4/MOV, so all
+media paths must continue to probe content rather than trust the suffix.
 
 The macOS transparent Tauri window enables `macOSPrivateApi`; this is acceptable for
 personal side-loading but incompatible with Mac App Store submission.

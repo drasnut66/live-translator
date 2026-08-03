@@ -76,3 +76,20 @@ ggml-large-v3-turbo-q5_0.bin
 ggml-silero-v6.2.0.bin
 2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987
 ```
+
+## macOS system-audio capture (verified 2026-08-03)
+
+Granted Screen Recording permission to the probe executable, then played a 40-second
+880 Hz fixture through `ffplay` while capturing the default display with
+`examples/system_audio_probe.rs`:
+
+- 5000 ms captured, `peak=0.0885`, `dropped_native_samples=0`.
+- The ScreenCaptureKit adapter requests 48 kHz mono float PCM, which the shared
+  buffered frame path resamples to the 16 kHz `AudioFrame` contract.
+
+Playback-path note: `afplay` output did **not** enter the SCK system-audio loopback
+(all-zero samples, `total_sample_size=0`), while `ffplay` output did. The adapter is
+correct; the difference is a CoreAudio playback-path routing detail on this machine.
+Validation must therefore use a full system-output playback path such as `ffplay`
+or a browser rather than `afplay`. Windows WASAPI hardware validation remains to be
+run on a Windows host.
