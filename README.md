@@ -106,8 +106,12 @@ large-v3-turbo when small is absent; Silero VAD is always required:
 - `ggml-large-v3-turbo-q5_0.bin` — optional, higher-accuracy offline runs
 - `ggml-silero-v6.2.0.bin` — required VAD model
 
-`scripts/download_models.sh` fetches all three with checksum verification. Set
-`LIVE_TRANSLATOR_WHISPER_MODEL` to a filename in the model directory (for example
+`scripts/download_models.sh` (or `download_models.ps1` on Windows) fetches these plus
+the optional `speakrs/` (speaker diarization) and `hymt/` (offline translation) models
+with checksum verification. The offline translation provider also needs a `llama-server`
+binary (or `llama-server.exe` on Windows) next to the Hy-MT model under `models/hymt/`;
+grab it from a recent [llama.cpp release](https://github.com/ggml-org/llama.cpp/releases).
+Set `LIVE_TRANSLATOR_WHISPER_MODEL` to a filename in the model directory (for example
 `ggml-large-v3-turbo-q5_0.bin`) to override the default model. The runtime also accepts
 `LIVE_TRANSLATOR_MODEL_DIR` to point at an alternate directory. This is the preferred
 installation path for packaged applications on both Mac and Windows. Never commit API
