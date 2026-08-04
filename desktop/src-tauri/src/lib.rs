@@ -128,6 +128,16 @@ pub fn run() {
             session::start_test_session,
             session::stop_session
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building Tauri application")
+        .run(|app, event| {
+            // Before the app exits, stop the recognition session so the
+            // whisper Metal context is released cleanly. Otherwise whisper.cpp
+            // aborts during its global Metal teardown (ggml_metal_rsets_free
+            // asserts on non-empty residency sets).
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                let sessions = app.state::<session::SessionController>();
+                let _ = sessions.stop();
+            }
+        });
 }
