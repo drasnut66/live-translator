@@ -6,8 +6,8 @@ use crate::audio::system_audio::{available_system_audio_devices, SystemAudioPcmS
 use crate::audio::vad::SileroVad;
 use crate::audio::websocket::BrowserTabPcmSource;
 use crate::audio::AudioFrameSource;
-use crate::translation::{TranslationJob, TranslationWorker};
 use crate::speaker::{PendingSegment, SpeakerWorker};
+use crate::translation::{TranslationJob, TranslationWorker};
 use crate::{is_file, model_directory, project_path};
 use live_translator_core::{StablePrefixCoordinator, TokenPiece, WHISPER_SAMPLE_RATE};
 use serde::Serialize;
@@ -250,7 +250,10 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
         "loading",
         Some(format!(
             "loaded {}",
-            model.file_name().and_then(|name| name.to_str()).unwrap_or("whisper model")
+            model
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("whisper model")
         )),
     );
 
@@ -289,11 +292,8 @@ fn run_session(app: AppHandle, input: SessionInput, stop: Arc<AtomicBool>) {
 
     emit_status(&app, "running", None);
     let translation = TranslationWorker::start(app.clone(), Arc::clone(&stop));
-    let speaker = SpeakerWorker::start(
-        model_directory(&app).join("speakrs"),
-        Arc::clone(&stop),
-    )
-    .ok();
+    let speaker =
+        SpeakerWorker::start(model_directory(&app).join("speakrs"), Arc::clone(&stop)).ok();
     let mut segment_id = 1_u64;
     let mut coordinator = StablePrefixCoordinator::new(segment_id, 0);
     let mut audio = Vec::with_capacity(MAXIMUM_WINDOW_SAMPLES);
@@ -503,8 +503,9 @@ fn open_audio_source(input: SessionInput) -> std::io::Result<Box<dyn AudioFrameS
             .map(|source| Box::new(source) as Box<dyn AudioFrameSource>),
         SessionInput::SystemAudio { device_id } => SystemAudioPcmSource::open(device_id.as_deref())
             .map(|source| Box::new(source) as Box<dyn AudioFrameSource>),
-        SessionInput::BrowserTab => BrowserTabPcmSource::open()
-            .map(|source| Box::new(source) as Box<dyn AudioFrameSource>),
+        SessionInput::BrowserTab => {
+            BrowserTabPcmSource::open().map(|source| Box::new(source) as Box<dyn AudioFrameSource>)
+        }
     }
 }
 
@@ -568,7 +569,14 @@ fn emit_finished_segment(
     segment_audio: &[f32],
 ) {
     if let Some(commit) = coordinator.finish(latest_hypothesis, input_ms) {
-        emit_commit(app, translation, commit, session_started, speaker, segment_audio);
+        emit_commit(
+            app,
+            translation,
+            commit,
+            session_started,
+            speaker,
+            segment_audio,
+        );
     }
 }
 

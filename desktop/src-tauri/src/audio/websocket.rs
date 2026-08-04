@@ -6,9 +6,7 @@ use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use tungstenite::{
-    accept_hdr, handshake::server::Response, protocol::WebSocket, Message,
-};
+use tungstenite::{accept_hdr, handshake::server::Response, protocol::WebSocket, Message};
 
 pub const BROWSER_TAB_WEBSOCKET_ADDR: &str = "127.0.0.1:8765";
 
@@ -48,7 +46,9 @@ impl BrowserTabPcmSource {
             .name("live-translator-browser-tab-websocket".to_owned())
             .spawn(move || serve_websocket(listener, thread_stop, sink))
             .map_err(|error| {
-                io::Error::other(format!("failed to start browser-tab websocket thread: {error}"))
+                io::Error::other(format!(
+                    "failed to start browser-tab websocket thread: {error}"
+                ))
             })?;
 
         Ok(Self {
@@ -89,11 +89,7 @@ impl Drop for BrowserTabPcmSource {
     }
 }
 
-fn serve_websocket(
-    listener: TcpListener,
-    stop: Arc<AtomicBool>,
-    sink: CaptureSampleSink,
-) {
+fn serve_websocket(listener: TcpListener, stop: Arc<AtomicBool>, sink: CaptureSampleSink) {
     loop {
         if stop.load(Ordering::Acquire) {
             return;

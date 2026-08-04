@@ -77,7 +77,11 @@ pub fn log_line(line: &str) {
         None => {
             let dir = std::env::var_os("LIVE_TRANSLATOR_MODEL_DIR")
                 .map(PathBuf::from)
-                .or_else(|| std::env::current_exe().ok().and_then(|e| e.parent().map(PathBuf::from)));
+                .or_else(|| {
+                    std::env::current_exe()
+                        .ok()
+                        .and_then(|e| e.parent().map(PathBuf::from))
+                });
             let Some(dir) = dir else { return };
             dir.join("diagnostics.log")
         }

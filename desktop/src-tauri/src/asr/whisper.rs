@@ -84,11 +84,10 @@ impl WhisperEngine {
     }
 
     pub fn transcribe(&mut self, samples: &[f32]) -> Result<Vec<TokenPiece>, WhisperEngineError> {
-        let mut params =
-            FullParams::new(SamplingStrategy::BeamSearch {
-                beam_size: 5,
-                patience: 1.0,
-            });
+        let mut params = FullParams::new(SamplingStrategy::BeamSearch {
+            beam_size: 5,
+            patience: 1.0,
+        });
         params.set_language(Some("ja"));
         params.set_translate(false);
         params.set_n_threads(self.config.n_threads);

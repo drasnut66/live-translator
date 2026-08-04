@@ -176,9 +176,7 @@ fn is_localhost(endpoint: &str) -> bool {
     reqwest::Url::parse(endpoint)
         .ok()
         .and_then(|url| url.host_str().map(str::to_owned))
-        .is_some_and(|host| {
-            host == "localhost" || host == "127.0.0.1" || host == "::1"
-        })
+        .is_some_and(|host| host == "localhost" || host == "127.0.0.1" || host == "::1")
 }
 
 fn translation_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -334,8 +332,8 @@ impl TranslationConfig {
             _ => resolved_api_key(provider)?,
         };
 
-        let local_model_dir = (provider == TranslationProvider::LocalMt)
-            .then(|| crate::model_directory(app));
+        let local_model_dir =
+            (provider == TranslationProvider::LocalMt).then(|| crate::model_directory(app));
 
         Some(Self {
             provider,

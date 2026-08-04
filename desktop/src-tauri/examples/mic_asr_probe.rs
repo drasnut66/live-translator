@@ -61,12 +61,15 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             continue;
         }
         // Decode only the most recent DECODE_WINDOW_SECS of audio.
-        let decode_start = audio.len().saturating_sub(WHISPER_SAMPLE_RATE as usize * DECODE_WINDOW_SECS);
+        let decode_start = audio
+            .len()
+            .saturating_sub(WHISPER_SAMPLE_RATE as usize * DECODE_WINDOW_SECS);
         let window = &audio[decode_start..];
         latest = engine.transcribe(window).map_err(|e| e.to_string())?;
         let elapsed_ms = total_samples as u64 * 1000 / u64::from(WHISPER_SAMPLE_RATE);
         let update = coordinator.observe(&latest, elapsed_ms);
-        if !update.partial.stable_text_ja.is_empty() || !update.partial.unstable_text_ja.is_empty() {
+        if !update.partial.stable_text_ja.is_empty() || !update.partial.unstable_text_ja.is_empty()
+        {
             println!(
                 "[{:>5} ms wall={:>5} ms] {}{}",
                 elapsed_ms,

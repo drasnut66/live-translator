@@ -98,7 +98,15 @@ impl LocalMtTranslator {
         let text = parsed
             .choices
             .first()
-            .and_then(|choice| choice.message.content.trim().split('\n').next().map(str::to_owned))
+            .and_then(|choice| {
+                choice
+                    .message
+                    .content
+                    .trim()
+                    .split('\n')
+                    .next()
+                    .map(str::to_owned)
+            })
             .filter(|text| !text.is_empty())
             .ok_or_else(|| "local translation returned no text".to_owned())?;
         Ok(text)
@@ -144,7 +152,14 @@ fn spawn_server(server_path: &Path, model_path: &Path, port: u16) -> Result<Chil
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
         if let Some(dir) = server_path.parent() {
-            command.env("PATH", format!("{};{}", dir.display(), std::env::var("PATH").unwrap_or_default()));
+            command.env(
+                "PATH",
+                format!(
+                    "{};{}",
+                    dir.display(),
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            );
         }
     }
     let child = command

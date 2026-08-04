@@ -118,7 +118,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 )?;
                 last_decode_samples = total_samples;
             }
-            finish_segment(&mut coordinator, &latest_hypothesis, total_samples, &mut stats);
+            finish_segment(
+                &mut coordinator,
+                &latest_hypothesis,
+                total_samples,
+                &mut stats,
+            );
             segment_id += 1;
             coordinator = StablePrefixCoordinator::new(segment_id, samples_to_ms(total_samples));
             audio.clear();
@@ -148,9 +153,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                         &mut stats,
                     )?;
                 }
-                finish_segment(&mut coordinator, &latest_hypothesis, total_samples, &mut stats);
+                finish_segment(
+                    &mut coordinator,
+                    &latest_hypothesis,
+                    total_samples,
+                    &mut stats,
+                );
                 segment_id += 1;
-                coordinator = StablePrefixCoordinator::new(segment_id, samples_to_ms(total_samples));
+                coordinator =
+                    StablePrefixCoordinator::new(segment_id, samples_to_ms(total_samples));
                 audio.clear();
                 latest_hypothesis.clear();
                 vad.reset();
@@ -186,7 +197,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             &mut stats,
         )?;
     }
-    finish_segment(&mut coordinator, &latest_hypothesis, total_samples, &mut stats);
+    finish_segment(
+        &mut coordinator,
+        &latest_hypothesis,
+        total_samples,
+        &mut stats,
+    );
     let _ = source.stop();
 
     report(&stats, total_samples, session_started);

@@ -59,8 +59,9 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         if total_samples < next_decode {
             continue;
         }
-        let decode_start =
-            audio.len().saturating_sub(WHISPER_SAMPLE_RATE as usize * DECODE_WINDOW_SECS);
+        let decode_start = audio
+            .len()
+            .saturating_sub(WHISPER_SAMPLE_RATE as usize * DECODE_WINDOW_SECS);
         let window = &audio[decode_start..];
         latest = engine.transcribe(window).map_err(|e| e.to_string())?;
         let elapsed_ms = total_samples as u64 * 1000 / u64::from(WHISPER_SAMPLE_RATE);

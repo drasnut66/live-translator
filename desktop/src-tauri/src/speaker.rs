@@ -50,10 +50,7 @@ pub struct SpeakerWorker {
 }
 
 impl SpeakerWorker {
-    pub fn start(
-        models_dir: PathBuf,
-        stop: Arc<AtomicBool>,
-    ) -> Result<Self, String> {
+    pub fn start(models_dir: PathBuf, stop: Arc<AtomicBool>) -> Result<Self, String> {
         let (tx, rx) = mpsc::channel();
         let (result_tx, result_rx) = mpsc::channel();
         let join = thread::Builder::new()
@@ -141,10 +138,7 @@ fn run_worker(
             && last_run.elapsed().as_secs_f64() >= RUN_INTERVAL_SECONDS
         {
             if pipeline.is_none() {
-                match OwnedDiarizationPipeline::from_dir(
-                    &models_dir,
-                    current_execution_mode(),
-                ) {
+                match OwnedDiarizationPipeline::from_dir(&models_dir, current_execution_mode()) {
                     Ok(p) => pipeline = Some(p),
                     Err(error) => {
                         eprintln!("speaker pipeline failed to load: {error}");
@@ -211,13 +205,11 @@ fn emit_assignments(
             eprintln!("speaker: segment {} unlabeled", segment.segment_id);
             continue;
         };
-        let speaker_id = *label_map
-            .entry(diar.speaker.clone())
-            .or_insert_with(|| {
-                let id = *next_id;
-                *next_id += 1;
-                id
-            });
+        let speaker_id = *label_map.entry(diar.speaker.clone()).or_insert_with(|| {
+            let id = *next_id;
+            *next_id += 1;
+            id
+        });
         let _ = result_tx.send(SpeakerAssignment {
             segment_id: segment.segment_id,
             speaker_id,
