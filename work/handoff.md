@@ -81,16 +81,17 @@ Date: 2026-08-03
 - whisper.cpp was built with Metal in the local development checkout.
 - `ggml-small.bin` (default), `ggml-large-v3-turbo-q5_0.bin` (optional), and
   `ggml-silero-v6.2.0.bin` are present.
+- Hy-MT1.5-1.8B Q4_K_M GGUF plus a bundled llama-server binary are present under
+  `models/hymt/` for the offline "local" translation provider.
 - Core tests, the production web build, and the Tauri Rust check pass. macOS system-audio
   capture is verified non-silent; Windows WASAPI hardware validation remains pending.
 
 ## Next executable tasks
 
 1. Run the equivalent WASAPI hardware probe on a Windows host.
-2. Load the `browser-tab-capture` extension in Chrome and validate the end-to-end overlay
-   session against a real web video (the WebSocket source itself is verified via
-   `browser_tab_probe`).
-3. Tag and release v0.1.0; the features for the first milestone are complete.
+2. Evaluate ASR quality tuning (beam search + initial prompt on whisper-small) to improve
+   Japanese recognition, which the user reports as weak.
+3. Tag and release v0.1.0; the core feature set is complete.
 
 ## Current blockers
 
