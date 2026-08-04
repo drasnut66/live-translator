@@ -340,14 +340,31 @@ function App() {
   }
 
   function selectTranslationProvider(provider: string) {
-    setTranslationSettings((current) => ({
-      ...current,
-      provider,
-      endpoint: defaultEndpointForProvider(provider),
-      model: provider === "openai-compatible" && !current.model.trim()
-        ? "gpt-4o-mini"
-        : current.model,
-    }));
+    setTranslationSettings((current) => {
+      const next = {
+        ...current,
+        provider,
+        endpoint: defaultEndpointForProvider(provider),
+        model: provider === "openai-compatible" && !current.model.trim()
+          ? "gpt-4o-mini"
+          : current.model,
+      };
+      // Persist immediately so a session started right after switching uses
+      // the chosen provider without needing the save button.
+      void invoke<TranslationSettings>("save_translation_settings", {
+        update: {
+          provider: next.provider,
+          endpoint: next.endpoint,
+          model: next.model,
+          apiKey: apiKey.trim() || undefined,
+        },
+      })
+        .then((saved) => setTranslationSettings(saved))
+        .catch((error) => {
+          setTranslationSettingsStatus(error instanceof Error ? error.message : String(error));
+        });
+      return next;
+    });
     setTranslationSettingsStatus("");
   }
 
