@@ -32,7 +32,11 @@ const MINIMUM_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 3 / 2;
 const STEP_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize;
 const VAD_INITIAL_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize / 2;
 const VAD_STEP_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize / 4;
-const MAXIMUM_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 15;
+// Decode only the most recent window so a rolling multi-speaker buffer does not
+// grow indefinitely (slow beam search, one speaker's laughter dominating the
+// whole decode, repeated re-translation of the same segment).
+const DECODE_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 4;
+const MAXIMUM_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 10;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -515,8 +519,13 @@ fn decode_and_emit(
     speaker: Option<&SpeakerWorker>,
 ) -> Result<Vec<TokenPiece>, String> {
     let decode_started = Instant::now();
+    // Decode only the most recent DECODE_WINDOW_SAMPLES so a long rolling
+    // segment (e.g. sustained laughter between speakers) does not dominate the
+    // hypothesis or slow beam search.
+    let decode_start = audio.len().saturating_sub(DECODE_WINDOW_SAMPLES);
+    let window = &audio[decode_start..];
     let hypothesis = engine
-        .transcribe(audio)
+        .transcribe(window)
         .map_err(|error| error.to_string())?;
     let input_ms = samples_to_milliseconds(total_samples);
     let update = coordinator.observe(&hypothesis, input_ms);

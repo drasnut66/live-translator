@@ -6,6 +6,10 @@ use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
 };
 
+/// Segments with a no-speech probability above this are treated as laughter /
+/// ambient noise and dropped instead of surfacing as hallucinated subtitles.
+const NO_SPEECH_THRESHOLD: f32 = 0.6;
+
 #[derive(Debug, Clone)]
 pub struct WhisperEngineConfig {
     pub n_threads: i32,
@@ -112,6 +116,12 @@ impl WhisperEngine {
         let mut incomplete_utf8 = Vec::new();
 
         for segment in self.state.as_iter() {
+            // Skip segments whisper thinks contain no real speech (laughter,
+            // ambient noise, music) so they do not surface as hallucinated
+            // subtitles like "(笑)" or repeated filler.
+            if segment.no_speech_probability() > NO_SPEECH_THRESHOLD {
+                continue;
+            }
             for token_index in 0..segment.n_tokens() {
                 let token = segment
                     .get_token(token_index)
