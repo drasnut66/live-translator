@@ -178,7 +178,9 @@ fn run_loopback(device: Device, stop: &AtomicBool, sink: &CaptureSampleSink) -> 
                 .get_next_packet_size()
                 .map_err(|error| error.to_string())?
             else {
-                break Err("WASAPI loopback did not report a packet size".to_owned());
+                // No packet size reported; leave the inner drain loop and
+                // continue waiting for the next event.
+                break;
             };
             if packet_frames == 0 {
                 break;
@@ -223,7 +225,7 @@ mod tests {
     fn downmixes_stereo_float_loopback_samples() {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&1.0_f32.to_le_bytes());
-        bytes.extend_from_slice(&-0.5_f32.to_le_bytes());
+        bytes.extend_from_slice(&(-0.5_f32).to_le_bytes());
         assert_eq!(decode_interleaved_stereo_f32(&bytes), vec![0.25]);
     }
 }
