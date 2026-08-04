@@ -162,6 +162,15 @@ fn environment_value(name: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_owned())
 }
 
+fn is_localhost(endpoint: &str) -> bool {
+    reqwest::Url::parse(endpoint)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|host| {
+            host == "localhost" || host == "127.0.0.1" || host == "::1"
+        })
+}
+
 fn translation_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
@@ -307,7 +316,13 @@ impl TranslationConfig {
     pub fn load(app: &AppHandle) -> Option<Self> {
         let settings = load_stored_settings(app).ok()?;
         let provider = settings.provider_kind().ok()?;
-        let api_key = resolved_api_key(provider)?;
+        // A local DeepL endpoint (e.g. a self-hosted DeepLX) accepts any or no
+        // API key, so do not require a credential in that case.
+        let api_key = if provider == TranslationProvider::DeepL && is_localhost(&settings.endpoint) {
+            String::new()
+        } else {
+            resolved_api_key(provider)?
+        };
 
         Some(Self {
             provider,
