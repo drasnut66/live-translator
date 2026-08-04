@@ -67,6 +67,30 @@ fn is_file(path: impl AsRef<Path>) -> bool {
     path.as_ref().is_file()
 }
 
+/// Appends a line to a diagnostics log under the application data directory so
+/// packaged builds can surface recognition/translation activity without a
+/// terminal. Best-effort; failures are ignored.
+pub fn log_line(line: &str) {
+    use std::io::Write;
+    let path = match std::env::var_os("LIVE_TRANSLATOR_LOG") {
+        Some(path) => PathBuf::from(path),
+        None => {
+            let dir = std::env::var_os("LIVE_TRANSLATOR_MODEL_DIR")
+                .map(PathBuf::from)
+                .or_else(|| std::env::current_exe().ok().and_then(|e| e.parent().map(PathBuf::from)));
+            let Some(dir) = dir else { return };
+            dir.join("diagnostics.log")
+        }
+    };
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(file, "{line}");
+    }
+}
+
 #[tauri::command]
 fn runtime_status(app: tauri::AppHandle) -> RuntimeStatus {
     let models = model_directory(&app);

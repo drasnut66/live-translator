@@ -522,6 +522,10 @@ fn decode_and_emit(
     let update = coordinator.observe(&hypothesis, input_ms);
     let decode_ms = decode_started.elapsed().as_millis() as u64;
     let wall_ms = session_started.elapsed().as_millis() as u64;
+    crate::log_line(&format!(
+        "[asr] input_ms={input_ms} wall_ms={wall_ms} decode_ms={decode_ms} stable=\"{}\" unstable=\"{}\"",
+        update.partial.stable_text_ja, update.partial.unstable_text_ja
+    ));
     let _ = app.emit(
         SUBTITLE_PARTIAL_EVENT,
         SubtitlePartialPayload {
@@ -568,6 +572,10 @@ fn emit_commit(
     segment_audio: &[f32],
 ) {
     let wall_ms = session_started.elapsed().as_millis() as u64;
+    crate::log_line(&format!(
+        "[asr:commit] seg={} {}-{}ms JA=\"{}\"",
+        commit.segment_id, commit.start_ms, commit.end_ms, commit.text_ja
+    ));
     let translation_job = TranslationJob {
         segment_id: commit.segment_id,
         start_ms: commit.start_ms,

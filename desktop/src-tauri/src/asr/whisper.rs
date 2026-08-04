@@ -80,11 +80,18 @@ impl WhisperEngine {
     }
 
     pub fn transcribe(&mut self, samples: &[f32]) -> Result<Vec<TokenPiece>, WhisperEngineError> {
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        let mut params =
+            FullParams::new(SamplingStrategy::BeamSearch {
+                beam_size: 5,
+                patience: 1.0,
+            });
         params.set_language(Some("ja"));
         params.set_translate(false);
         params.set_n_threads(self.config.n_threads);
-        params.set_no_context(true);
+        params.set_no_context(false);
+        // A short Japanese prompt anchors the model and reduces hallucinated
+        // filler on fast, overlapping dialogue.
+        params.set_initial_prompt("これは日本語の字幕です。");
         params.set_single_segment(false);
         params.set_print_special(false);
         params.set_print_progress(false);

@@ -3,7 +3,7 @@ use std::path::Path;
 use whisper_rs::{WhisperVadContext, WhisperVadContextParams, WhisperVadParams};
 
 const DEFAULT_LOOKBACK_MS: u64 = 4_000;
-const DEFAULT_ENDPOINT_GUARD_MS: u64 = 250;
+const DEFAULT_ENDPOINT_GUARD_MS: u64 = 150;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VadObservation {
@@ -35,8 +35,12 @@ impl SileroVad {
         let mut params = WhisperVadParams::default();
         params.set_threshold(0.5);
         params.set_min_speech_duration(160);
-        params.set_min_silence_duration(500);
-        params.set_max_speech_duration(12.0);
+        // Shorter silence threshold so rapid multi-speaker dialogue (quick
+        // back-and-forth and interruptions) closes a segment on brief gaps
+        // instead of growing one segment for many seconds and re-translating
+        // it repeatedly.
+        params.set_min_silence_duration(300);
+        params.set_max_speech_duration(8.0);
         params.set_speech_pad(80);
         params.set_samples_overlap(0.1);
 

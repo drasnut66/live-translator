@@ -676,6 +676,10 @@ fn run_worker(
             continue;
         };
         let latency_ms = translate_started.elapsed().as_millis() as u64;
+        crate::log_line(&format!(
+            "[translate] seg={} {}ms JA=\"{}\" -> ZH=\"{}\"",
+            job.segment_id, latency_ms, job.text_ja, text_zh
+        ));
         if stop.load(Ordering::Acquire) {
             break;
         }
