@@ -10,6 +10,9 @@ const HY_MT_PROMPT: &str =
     "Translate the following segment into Chinese, without additional explanation.\n\n";
 
 pub const HY_MT_MODEL_FILE: &str = "hymt/HY-MT1.5-1.8B-Q4_K_M.gguf";
+#[cfg(target_os = "windows")]
+pub const LLAMA_SERVER_FILE: &str = "hymt/llama-server.exe";
+#[cfg(not(target_os = "windows"))]
 pub const LLAMA_SERVER_FILE: &str = "hymt/llama-server";
 
 /// Offline Japanese-to-Chinese translation by running the Tencent Hy-MT1.5
