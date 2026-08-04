@@ -67,4 +67,11 @@ download "$SPEAKR_BASE/plda_mean1.npy" "$MODEL_DIR/speakrs/plda_mean1.npy" \
 download "$SPEAKR_BASE/plda_mean2.npy" "$MODEL_DIR/speakrs/plda_mean2.npy" \
     "6f6fb708a2037197b5b84ffeaa8f140cb878088fbecd6ab042ad26a7691bd2cf"
 
+# Offline translation model (Tencent Hy-MT1.5, Q4_K_M). 1.1 GB; used by the
+# "local" translation provider for fully offline Japanese-to-Chinese.
+download \
+    "https://huggingface.co/tencent/HY-MT1.5-1.8B-GGUF/resolve/main/HY-MT1.5-1.8B-Q4_K_M.gguf" \
+    "$MODEL_DIR/hymt/HY-MT1.5-1.8B-Q4_K_M.gguf" \
+    "4383ac0c3c8e476de98ff979c2a3f069f8c4fb385e7860cf2d28da896cc477c7"
+
 printf 'Models are ready in %s\n' "$MODEL_DIR"

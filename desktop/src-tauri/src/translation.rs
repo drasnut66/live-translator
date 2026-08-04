@@ -500,7 +500,6 @@ impl DeepLTranslator {
     }
 }
 
-#[derive(Clone)]
 enum TranslationClient {
     OpenAi(OpenAiCompatibleTranslator),
     DeepL(DeepLTranslator),
