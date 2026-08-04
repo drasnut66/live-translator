@@ -8,6 +8,7 @@
 /models/*.bin
 /models/*.sha256
 /models/speakrs/
+/models/hymt/
 /runtime/
 
 # Build output and local toolchains

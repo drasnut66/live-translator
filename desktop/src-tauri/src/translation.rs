@@ -24,6 +24,7 @@ const MINIMUM_TIMEOUT_MS: u64 = 1_000;
 const MAXIMUM_TIMEOUT_MS: u64 = 60_000;
 const OPENAI_COMPATIBLE_PROVIDER: &str = "openai-compatible";
 const DEEPL_PROVIDER: &str = "deepl";
+const LOCAL_MT_PROVIDER: &str = "local";
 const TRANSLATION_SETTINGS_FILE: &str = "translation-settings.json";
 const CREDENTIAL_SERVICE: &str = "com.mon3tr.live-translator.translation";
 
@@ -31,6 +32,7 @@ const CREDENTIAL_SERVICE: &str = "com.mon3tr.live-translator.translation";
 enum TranslationProvider {
     OpenAiCompatible,
     DeepL,
+    LocalMt,
 }
 
 impl TranslationProvider {
@@ -38,6 +40,7 @@ impl TranslationProvider {
         match value.trim() {
             OPENAI_COMPATIBLE_PROVIDER => Ok(Self::OpenAiCompatible),
             DEEPL_PROVIDER => Ok(Self::DeepL),
+            LOCAL_MT_PROVIDER => Ok(Self::LocalMt),
             _ => Err("the selected translation provider is not supported".to_owned()),
         }
     }
@@ -46,6 +49,7 @@ impl TranslationProvider {
         match self {
             Self::OpenAiCompatible => OPENAI_COMPATIBLE_PROVIDER,
             Self::DeepL => DEEPL_PROVIDER,
+            Self::LocalMt => LOCAL_MT_PROVIDER,
         }
     }
 
@@ -53,6 +57,7 @@ impl TranslationProvider {
         match self {
             Self::OpenAiCompatible => DEFAULT_OPENAI_ENDPOINT,
             Self::DeepL => DEFAULT_DEEPL_ENDPOINT,
+            Self::LocalMt => "",
         }
     }
 
@@ -60,6 +65,7 @@ impl TranslationProvider {
         match self {
             Self::OpenAiCompatible => "openai-compatible-api-key",
             Self::DeepL => "deepl-api-key",
+            Self::LocalMt => "local-mt",
         }
     }
 
@@ -67,6 +73,7 @@ impl TranslationProvider {
         match self {
             Self::OpenAiCompatible => "LIVE_TRANSLATOR_API_KEY",
             Self::DeepL => "LIVE_TRANSLATOR_DEEPL_API_KEY",
+            Self::LocalMt => "LIVE_TRANSLATOR_LOCAL_MT",
         }
     }
 }
@@ -108,18 +115,21 @@ impl StoredTranslationSettings {
         let provider = TranslationProvider::parse(&self.provider)?;
         self.provider = provider.as_str().to_owned();
 
-        if self.endpoint.is_empty() {
-            return Err("translation endpoint must not be empty".to_owned());
+        // Local providers run entirely offline and need no endpoint.
+        if provider != TranslationProvider::LocalMt {
+            if self.endpoint.is_empty() {
+                return Err("translation endpoint must not be empty".to_owned());
+            }
+            let endpoint = reqwest::Url::parse(&self.endpoint)
+                .map_err(|_| "translation endpoint must be a valid URL".to_owned())?;
+            if endpoint.scheme() != "https" && endpoint.scheme() != "http" {
+                return Err("translation endpoint must use HTTP or HTTPS".to_owned());
+            }
         }
         if provider == TranslationProvider::OpenAiCompatible
             && (self.model.is_empty() || self.system_prompt.is_empty())
         {
             return Err("translation model and prompt must not be empty".to_owned());
-        }
-        let endpoint = reqwest::Url::parse(&self.endpoint)
-            .map_err(|_| "translation endpoint must be a valid URL".to_owned())?;
-        if endpoint.scheme() != "https" && endpoint.scheme() != "http" {
-            return Err("translation endpoint must use HTTP or HTTPS".to_owned());
         }
         if !(MINIMUM_TIMEOUT_MS..=MAXIMUM_TIMEOUT_MS).contains(&self.timeout_ms) {
             return Err(format!(
@@ -310,19 +320,22 @@ pub struct TranslationConfig {
     model: String,
     system_prompt: String,
     timeout: Duration,
+    local_model_dir: Option<PathBuf>,
 }
 
 impl TranslationConfig {
     pub fn load(app: &AppHandle) -> Option<Self> {
         let settings = load_stored_settings(app).ok()?;
         let provider = settings.provider_kind().ok()?;
-        // A local DeepL endpoint (e.g. a self-hosted DeepLX) accepts any or no
-        // API key, so do not require a credential in that case.
-        let api_key = if provider == TranslationProvider::DeepL && is_localhost(&settings.endpoint) {
-            String::new()
-        } else {
-            resolved_api_key(provider)?
+        // Local providers (self-hosted DeepLX, Hy-MT) need no credential.
+        let api_key = match provider {
+            TranslationProvider::LocalMt => String::new(),
+            TranslationProvider::DeepL if is_localhost(&settings.endpoint) => String::new(),
+            _ => resolved_api_key(provider)?,
         };
+
+        let local_model_dir = (provider == TranslationProvider::LocalMt)
+            .then(|| crate::model_directory(app));
 
         Some(Self {
             provider,
@@ -331,6 +344,7 @@ impl TranslationConfig {
             model: settings.model,
             system_prompt: settings.system_prompt,
             timeout: Duration::from_millis(settings.timeout_ms),
+            local_model_dir,
         })
     }
 }
@@ -486,10 +500,11 @@ impl DeepLTranslator {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum TranslationClient {
     OpenAi(OpenAiCompatibleTranslator),
     DeepL(DeepLTranslator),
+    LocalMt(crate::local_mt::LocalMtTranslator),
 }
 
 impl TranslationClient {
@@ -499,6 +514,12 @@ impl TranslationClient {
                 OpenAiCompatibleTranslator::new(config).map(Self::OpenAi)
             }
             TranslationProvider::DeepL => DeepLTranslator::new(config).map(Self::DeepL),
+            TranslationProvider::LocalMt => {
+                let model_dir = config
+                    .local_model_dir
+                    .ok_or_else(|| "local translation model directory is missing".to_owned())?;
+                crate::local_mt::LocalMtTranslator::new(model_dir).map(Self::LocalMt)
+            }
         }
     }
 
@@ -506,6 +527,7 @@ impl TranslationClient {
         match self {
             Self::OpenAi(translator) => translator.translate(text_ja),
             Self::DeepL(translator) => translator.translate(text_ja),
+            Self::LocalMt(translator) => translator.translate(text_ja),
         }
     }
 }

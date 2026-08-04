@@ -561,20 +561,23 @@ function App() {
             >
               <option value="openai-compatible">OpenAI Compatible</option>
               <option value="deepl">DeepL</option>
+              <option value="local">本地 Hy-MT</option>
             </select>
           </label>
-          <label>
-            <span>端点</span>
-            <input
-              type="url"
-              aria-label="翻译服务端点"
-              value={translationSettings.endpoint}
-              onChange={(event) => setTranslationSettings((current) => ({
-                ...current,
-                endpoint: event.target.value,
-              }))}
-            />
-          </label>
+          {translationSettings.provider !== "local" && (
+            <label>
+              <span>端点</span>
+              <input
+                type="url"
+                aria-label="翻译服务端点"
+                value={translationSettings.endpoint}
+                onChange={(event) => setTranslationSettings((current) => ({
+                  ...current,
+                  endpoint: event.target.value,
+                }))}
+              />
+            </label>
+          )}
           {translationSettings.provider === "openai-compatible" && (
             <label>
               <span>模型</span>
@@ -589,17 +592,19 @@ function App() {
               />
             </label>
           )}
-          <label>
-            <span>API 密钥</span>
-            <input
-              type="password"
-              autoComplete="off"
-              aria-label="翻译 API 密钥"
-              placeholder={translationSettings.apiKeyConfigured ? "已配置" : "未配置"}
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-            />
-          </label>
+          {translationSettings.provider !== "local" && (
+            <label>
+              <span>API 密钥</span>
+              <input
+                type="password"
+                autoComplete="off"
+                aria-label="翻译 API 密钥"
+                placeholder={translationSettings.apiKeyConfigured ? "已配置" : "未配置"}
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+              />
+            </label>
+          )}
           <div className="translation-actions">
             <button
               className="icon-button"

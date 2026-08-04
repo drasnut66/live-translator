@@ -5,6 +5,7 @@ use tauri::Manager;
 
 pub mod asr;
 pub mod audio;
+pub mod local_mt;
 pub mod session;
 pub mod speaker;
 pub mod translation;
