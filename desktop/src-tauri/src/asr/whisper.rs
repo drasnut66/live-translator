@@ -24,10 +24,20 @@ impl Default for WhisperEngineConfig {
             .unwrap_or(1);
         Self {
             n_threads,
-            use_gpu: cfg!(target_os = "macos"),
+            use_gpu: default_use_gpu(),
             flash_attention: true,
         }
     }
+}
+
+/// GPU is on by default on macOS (Metal) and on Windows only when built with
+/// the `cuda` feature (local CUDA builds; CI compiles CPU-only). Set
+/// LIVE_TRANSLATOR_FORCE_CPU=1 to stay on CPU even when a GPU backend exists.
+fn default_use_gpu() -> bool {
+    if std::env::var_os("LIVE_TRANSLATOR_FORCE_CPU").is_some() {
+        return false;
+    }
+    cfg!(target_os = "macos") || cfg!(all(target_os = "windows", feature = "cuda"))
 }
 
 #[derive(Debug)]
@@ -91,10 +101,14 @@ impl WhisperEngine {
         params.set_language(Some("ja"));
         params.set_translate(false);
         params.set_n_threads(self.config.n_threads);
-        params.set_no_context(false);
-        // A short Japanese prompt anchors the model and reduces hallucinated
-        // filler on fast, overlapping dialogue.
-        params.set_initial_prompt("これは日本語の字幕です。");
+        // Decode each window independently. Feeding the previous window's
+        // tokens back as context makes a hallucinated or overlapping tail
+        // snowball into repeated output (measured on large-v3-turbo: seg=6
+        // grew "ごめんなさい" indefinitely). Set LIVE_TRANSLATOR_NO_CONTEXT=0
+        // to restore cross-window context.
+        params.set_no_context(std::env::var_os("LIVE_TRANSLATOR_NO_CONTEXT")
+            .map(|value| value != "0")
+            .unwrap_or(true));
         params.set_single_segment(false);
         params.set_print_special(false);
         params.set_print_progress(false);

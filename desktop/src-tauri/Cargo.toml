@@ -14,6 +14,13 @@ edition = "2021"
 name = "live_translator_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# `cuda` enables whisper-rs's CUDA backend on Windows. It is OFF by default so
+# CI (no CUDA toolchain) compiles a CPU-only build; local CUDA builds pass
+# `--features cuda`. The local build script `build_cuda.ps1` does this.
+[features]
+default = []
+cuda = ["whisper-rs/cuda"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -38,6 +45,7 @@ speakrs = { git = "https://github.com/avencera/speakrs.git", features = ["coreml
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wasapi = "=0.23.0"
+whisper-rs = { version = "=0.16.0" }
 
-[target.'cfg(not(target_os = "macos"))'.dependencies]
+[target.'cfg(all(not(target_os = "macos"), not(target_os = "windows")))'.dependencies]
 whisper-rs = "=0.16.0"

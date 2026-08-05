@@ -132,9 +132,18 @@ fn spawn_server(server_path: &Path, model_path: &Path, port: u16) -> Result<Chil
         .arg("--port")
         .arg(port.to_string())
         .arg("-ngl")
-        .arg("0")
+        .arg("99")
         .arg("-t")
-        .arg("2")
+        .arg("4")
+        // Cap the KV cache: llama-server otherwise defaults to the model's
+        // full context (tens of thousands of tokens) and eats 3-6 GB of RAM.
+        // 4096 tokens is generous for short subtitle segments (128 max output).
+        .arg("--ctx-size")
+        .arg("4096")
+        .arg("--cache-type-k")
+        .arg("q8_0")
+        .arg("--cache-type-v")
+        .arg("q8_0")
         .arg("--host")
         .arg("127.0.0.1")
         .stdout(Stdio::null())
