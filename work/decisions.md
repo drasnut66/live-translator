@@ -119,3 +119,88 @@ timeout. This keeps the app lightweight and adds zero model-distribution surface
 Revisit only if offline translation or fixed-price volume becomes a hard requirement, at
 which point the ONNX Runtime path (the only mature local option with a Rust binding) would be
 assessed against that requirement.
+
+## D016: Decode each Whisper window with no_context on
+
+`set_no_context(false)` — the whisper.cpp default — feeds the previous decode window's
+tokens back as prompt context. On low-information or overlapping audio the large model
+snowballs that tail into repetition: measured on large-v3-turbo, a single segment grew
+`"ごめんなさい"` indefinitely, re-translating every second. `set_no_context(true)` makes
+each window independent: repetition gone, and decode got ~2.8× faster (max 1338 → 474 ms)
+because there is no context to re-process. Cross-window hypothesis stability is slightly
+reduced, which is why the stable-prefix coordinator exists. `LIVE_TRANSLATOR_NO_CONTEXT=0`
+re-enables context for experimentation.
+
+**Why:** eliminates the dominant "subtitle stuck repeating one phrase" failure mode.
+**How to apply:** keep no_context on by default; do not reintroduce cross-window context
+without re-measuring the repetition failure on the large model.
+
+## D017: Translation runs on a CUDA llama.cpp server (Hy-MT)
+
+The originally bundled `hymt/llama-server.exe` was CPU-only (no ggml-cuda.dll), so
+`-ngl` was ignored and each Japanese→Chinese segment took ~2100 ms on CPU. A CUDA build
+of llama.cpp was compiled in place (`C:\llm\llama.cpp`, `LLAMA_CUDA=ON`,
+`CMAKE_CUDA_ARCHITECTURES=86`) and deployed to `models/hymt/`; `-ngl 99` puts all layers
+on the RTX 3060 Ti. Per-translation latency dropped to ~125-190 ms. The current llama.cpp
+supports Hy-MT's `hunyuan-dense` architecture (`src/models/hunyuan-dense.cpp`), which the
+old bundled server predates. The CPU edition is preserved at `models/hymt/cpu-backup/`.
+`--ctx-size 4096` and q8_0 KV cap llama-server RAM at ~1.9 GB (was 5-8 GB).
+
+**Why:** offline translation must keep up with live subtitles; CUDA is available and
+cheap on this machine.
+**How to apply:** the app treats the Hy-MT model directory as the llama.cpp home (server +
+DLLs live there). Re-deploying llama.cpp means copying the exe and `build-cuda/bin/*.dll`
+into `models/hymt/`; CPU fallback files remain in `cpu-backup/`.
+
+## D018: A distributable exe requires `tauri build`, not `cargo build`
+
+`cargo build --release` compiles only the Rust backend; the Tauri exe then resolves the
+frontend at the Vite dev URL (`localhost:1420`) and shows "connection refused" without the
+dev server. `npm run tauri build` runs the `beforeBuildCommand` (`npm run build`) and
+bundles `desktop/dist/` into the binary, plus MSI/NSIS packages. `build_cuda.ps1 -Mode
+tauri` is the single command for a distributable CUDA build.
+
+**Why:** confusing runtime failure when a release exe was produced with cargo alone.
+**How to apply:** always use `build_cuda.ps1 -Mode tauri` for anything the user will run
+outside the dev server; `-Mode release` is only for compile checks.
+
+## D019: Skip re-translation for repetitive-append commits
+
+`StablePrefixCoordinator` commits each newly-agreed token, so a segment whose hypothesis
+grows from "舌打ち!" to "舌打ち!舌打ち!" to "舌打ち!舌打ち!舌打ち!" emits a commit per
+step, and each commit used to re-translate — flooding the subtitle row. `AsrCommit` now
+carries `translation_skippable`, true when the appended tokens are all already committed
+(`is_repetition_run`). `session.rs` still emits the frontend event (so the displayed
+Japanese grows) but skips the translation worker; the frontend keeps the last real
+translation instead of resetting to "等待翻译". Meaningful appends ("今日は" → "今日は晴れ")
+are never flagged.
+
+**Why:** a single noisy/repetitive segment should not re-translate every second.
+**How to apply:** keep the flag computed from token ids, not text; the first commit of any
+segment is always translated.
+
+## D020: Gate the CUDA feature behind a non-default cargo feature
+
+whisper-rs-sys's `cuda` feature hard-requires `CUDA_PATH` in its build script
+(`env::var("CUDA_PATH").unwrap()`), which does not exist on GitHub's windows-latest CI
+runner — a plain push of `features = ["cuda"]` would break CI. The desktop crate now
+defines a package-level `cuda = ["whisper-rs/cuda"]` feature, off by default, and
+`build_cuda.ps1` passes `--features cuda` for local release/tauri builds. CI compiles the
+default (CPU) build, which needs no CUDA toolchain. `default_use_gpu()` is
+`cfg!(all(windows, feature = "cuda"))`, so the CPU CI build defaults to CPU inference.
+
+**Why:** keep the repo's CI green while retaining local CUDA acceleration.
+**How to apply:** never put `cuda` in `default`. Any code that behaves differently with the
+GPU backend must key off `cfg!(feature = "cuda")`, not `cfg!(target_os)`.
+
+## D021: Local CUDA builds require the nightly toolchain
+
+Rust stable 1.97.1 panics inside rustc (`TryFromIntError(PosOverflow)`) when compiling the
+cuda feature path of this crate; nightly 1.99.0 compiles it. `desktop/src-tauri/
+rust-toolchain.toml` pins nightly for local builds and is git-ignored so CI (stable) stays
+on stable. CI never compiles the cuda feature, so stable is safe there.
+
+**Why:** stable rustc is buggy on this specific feature path; nightly is the working
+toolchain.
+**How to apply:** keep `rust-toolchain.toml` local-only (git-ignored). If a future stable
+rustc fixes the panic, the pin can be dropped.

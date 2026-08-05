@@ -18,6 +18,8 @@
 /desktop/dist/
 /desktop/src-tauri/target/
 /desktop/src-tauri/gen/
+/LiveTranslator.exe
+/desktop/src-tauri/rust-toolchain.toml
 
 # Local media and generated transcription output
 *.flv
