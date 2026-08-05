@@ -50,6 +50,7 @@ type SubtitleCommitPayload = {
   startMs: number;
   endMs: number;
   textJa: string;
+  translationSkippable: boolean;
   wallMs: number;
 };
 
@@ -224,17 +225,31 @@ function App() {
             setLatencyMs(payload.decodeMs);
           }),
           listen<SubtitleCommitPayload>("subtitle:commit", ({ payload }) => {
-            setTranslation("等待翻译");
+            if (!payload.translationSkippable) {
+              setTranslation("等待翻译");
+            }
             setHistory((entries) => {
-              const next = {
-                time: formatTimestamp(payload.endMs),
-                japanese: payload.textJa,
-                chinese: "等待翻译",
-                segmentId: payload.segmentId,
-              };
+              const time = formatTimestamp(payload.endMs);
               const existing = entries.findIndex((entry) => entry.segmentId === payload.segmentId);
-              if (existing < 0) return [next, ...entries].slice(0, 20);
-              return entries.map((entry, index) => index === existing ? next : entry);
+              if (existing < 0) {
+                return [{
+                  time,
+                  japanese: payload.textJa,
+                  chinese: "等待翻译",
+                  segmentId: payload.segmentId,
+                }, ...entries].slice(0, 20);
+              }
+              return entries.map((entry, index) => index === existing
+                ? {
+                    ...entry,
+                    time,
+                    japanese: payload.textJa,
+                    // A skippable commit is a repetitive append (e.g. a
+                    // hallucinated "舌打ち!" growing); keep the last real
+                    // translation instead of resetting it to "等待翻译".
+                    chinese: payload.translationSkippable ? entry.chinese : "等待翻译",
+                  }
+                : entry);
             });
           }),
           listen<TranslationPayload>("subtitle:translation", ({ payload }) => {

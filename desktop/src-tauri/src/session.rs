@@ -64,6 +64,7 @@ pub struct SubtitleCommitPayload {
     pub start_ms: u64,
     pub end_ms: u64,
     pub text_ja: String,
+    pub translation_skippable: bool,
     pub wall_ms: u64,
 }
 
@@ -606,11 +607,14 @@ fn emit_commit(
             segment_id: commit.segment_id,
             start_ms: commit.start_ms,
             end_ms: commit.end_ms,
-            text_ja: commit.text_ja,
+            text_ja: commit.text_ja.clone(),
+            translation_skippable: commit.translation_skippable,
             wall_ms,
         },
     );
-    translation.submit(translation_job);
+    if !commit.translation_skippable {
+        translation.submit(translation_job);
+    }
     if let Some(speaker) = speaker {
         speaker.submit(PendingSegment {
             segment_id: commit.segment_id,

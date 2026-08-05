@@ -177,6 +177,10 @@ pub struct AsrCommit {
     pub start_ms: u64,
     pub end_ms: u64,
     pub text_ja: String,
+    /// True when this commit only appends tokens that were already committed
+    /// (e.g. a hallucinated "舌打ち!" growing to "舌打ち!舌打ち!"). The caller
+    /// should update the displayed text but skip re-translation.
+    pub translation_skippable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,12 +220,14 @@ impl StablePrefixCoordinator {
 
         let commit = if commit_len > self.committed.len() {
             let newly_committed = &current[self.committed.len()..commit_len];
+            let translation_skippable = is_repetition_run(newly_committed, &self.committed);
             self.committed.extend_from_slice(newly_committed);
             Some(AsrCommit {
                 segment_id: self.segment_id,
                 start_ms: self.start_ms,
                 end_ms,
                 text_ja: pieces_to_text(&self.committed),
+                translation_skippable,
             })
         } else {
             None
@@ -253,12 +259,15 @@ impl StablePrefixCoordinator {
             return None;
         }
 
+        let appended = &current[self.committed.len()..];
+        let translation_skippable = is_repetition_run(appended, &self.committed);
         self.committed = current.to_vec();
         Some(AsrCommit {
             segment_id: self.segment_id,
             start_ms: self.start_ms,
             end_ms,
             text_ja: pieces_to_text(&self.committed),
+            translation_skippable,
         })
     }
 }
@@ -280,6 +289,17 @@ fn starts_with_tokens(tokens: &[TokenPiece], prefix: &[TokenPiece]) -> bool {
 
 fn pieces_to_text(pieces: &[TokenPiece]) -> String {
     pieces.iter().map(|piece| piece.text.as_str()).collect()
+}
+
+/// True when `appended` is a pure repetition of tokens already present in
+/// `committed` — a stable-prefix growth that carries no new meaning (e.g.
+/// "舌打ち!" -> "舌打ち!舌打ち!"). An empty `committed` never qualifies, so the
+/// first commit of a segment is always translated.
+fn is_repetition_run(appended: &[TokenPiece], committed: &[TokenPiece]) -> bool {
+    !committed.is_empty()
+        && appended
+            .iter()
+            .all(|appended| committed.iter().any(|committed| committed.id == appended.id))
 }
 
 #[cfg(test)]
@@ -366,6 +386,7 @@ mod tests {
                 start_ms: 100,
                 end_ms: 700,
                 text_ja: "今日は晴れ".to_owned(),
+                translation_skippable: false,
             })
         );
     }
@@ -395,6 +416,7 @@ mod tests {
                 start_ms: 50,
                 end_ms: 400,
                 text_ja: "ab".to_owned(),
+                translation_skippable: false,
             })
         );
     }
@@ -425,5 +447,63 @@ mod tests {
             coordinator.finish(&[token(9, "x"), token(10, "y"), token(11, "z")], 300),
             None
         );
+    }
+
+    #[test]
+    fn repetitive_append_is_marked_translation_skippable() {
+        let mut coordinator = StablePrefixCoordinator::new(5, 0);
+        let click = token(1, "舌打ち!");
+
+        coordinator.observe(&[click.clone()], 100);
+        let first = coordinator
+            .observe(&[click.clone(), click.clone()], 200)
+            .commit
+            .expect("first commit");
+        assert_eq!(first.text_ja, "舌打ち!");
+        assert!(!first.translation_skippable);
+
+        let grow = coordinator
+            .observe(&[click.clone(), click.clone(), click.clone()], 300)
+            .commit
+            .expect("growth commit");
+        assert_eq!(grow.text_ja, "舌打ち!舌打ち!");
+        assert!(grow.translation_skippable);
+    }
+
+    #[test]
+    fn meaningful_append_is_not_translation_skippable() {
+        let mut coordinator = StablePrefixCoordinator::new(6, 0);
+        let kyoo = token(1, "今日は");
+        let hare = token(2, "晴れ");
+        let desu = token(3, "です");
+
+        coordinator.observe(&[kyoo.clone()], 100);
+        let first = coordinator
+            .observe(&[kyoo.clone(), hare.clone()], 200)
+            .commit
+            .expect("first commit");
+        assert_eq!(first.text_ja, "今日は");
+        assert!(!first.translation_skippable);
+
+        let grow = coordinator
+            .observe(&[kyoo.clone(), hare.clone(), desu.clone()], 300)
+            .commit
+            .expect("growth commit");
+        assert_eq!(grow.text_ja, "今日は晴れ");
+        assert!(!grow.translation_skippable);
+    }
+
+    #[test]
+    fn finish_marks_repetitive_tail_translation_skippable() {
+        let mut coordinator = StablePrefixCoordinator::new(7, 0);
+        let click = token(1, "舌打ち!");
+
+        coordinator.observe(&[click.clone()], 100);
+        coordinator.observe(&[click.clone(), click.clone()], 200);
+        let finish = coordinator
+            .finish(&[click.clone(), click.clone(), click.clone()], 300)
+            .expect("finish commit");
+        assert_eq!(finish.text_ja, "舌打ち!舌打ち!舌打ち!");
+        assert!(finish.translation_skippable);
     }
 }
