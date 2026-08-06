@@ -204,3 +204,19 @@ on stable. CI never compiles the cuda feature, so stable is safe there.
 toolchain.
 **How to apply:** keep `rust-toolchain.toml` local-only (git-ignored). If a future stable
 rustc fixes the panic, the pin can be dropped.
+
+## D022: Decode the most recent 8 seconds instead of 4
+
+Every decode in the session (partials AND the final commit decode) now uses the most recent
+8 s of the rolling buffer instead of 4 s, overridable via
+`LIVE_TRANSLATOR_DECODE_WINDOW_SECONDS` (clamped 2-10). Measured on `1.mp4` with the real
+VAD loop on the RTX 3060 Ti CUDA build: 4 s truncated long Japanese utterances mid-sentence
+and lost ~1/3 of committed segments; 8 s recovered them at only ~60-100 ms extra average
+decode, still ~1.0x realtime for both whisper-small and large-v3-turbo.
+
+**Why:** the 4 s cap was chosen to bound decode cost, but on a CUDA GPU it was hiding real
+content; a longer window is the biggest single recognition-quality win available without a
+model change.
+**How to apply:** keep the window at 8 s on GPU builds. On macOS Metal, small+8 s is fine
+(was 1.0x at 15 s), but large-v3-turbo was 0.49x realtime on M3 — re-measure before
+defaulting large there. Prefer a larger window over smaller models when the GPU has headroom.

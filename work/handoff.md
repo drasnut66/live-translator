@@ -359,3 +359,153 @@ Source/config only. Tracked changes ready to commit:
 
 Excluded (git-ignored): `LiveTranslator.exe`, `desktop/src-tauri/rust-toolchain.toml`,
 `models/`, `target/`, `node_modules/`, `dist/`.
+
+---
+
+## ASR quality A/B + decode-window fix (2026-08-05)
+
+User feedback: recognition is "勉强能用" but noticeably weak. Ran a controlled A/B on
+`D:\myapp\1.mp4` (same content as the 1.flv fixture) with the real session loop (Silero
+VAD + rolling window + stable-prefix coordinator + beam search, `no_context=true`, ja
+forced), 180 s of input, on the RTX 3060 Ti CUDA build. New probe:
+`desktop/src-tauri/examples/asr_ab_probe.rs` (prints every commit; window configurable via
+`LIVE_TRANSLATOR_DECODE_WINDOW_SECONDS`). Raw outputs kept under `D:\myapp\_asr_ab_evidence\`.
+
+### Measurements
+
+| combo | commits | avg decode | max decode | realtime |
+|---|---|---|---|---|
+| small, window 4 s (old default) | 40 | 229 ms | 1515 ms | ~1.0x |
+| small, window 8 s | 61 | 334 ms | 2065 ms | ~1.0x |
+| large-v3-turbo, window 4 s | 44 | 254 ms | 1106 ms | ~1.0x |
+| large-v3-turbo, window 8 s | 59 | 291 ms | 1202 ms | ~1.0x |
+
+### Findings
+
+1. **Decode window was the biggest quality lever.** Every partial AND final decode only
+   saw the last 4 s of a segment, so long Japanese utterances were truncated mid-sentence
+   and often never committed at all (w4 committed ~1/3 fewer segments than w8). Examples
+   recovered by 8 s: "それはプレゼントを渡したカフでした", "携帯用顕微鏡です",
+   "多分取扱説明書読めよって話", "あのあれなんていうのか…持ち運べる".
+2. **large-v3-turbo is clearly better than small on this machine** and costs almost
+   nothing: avg 291 ms decode (w8), ~1.0x realtime, VRAM ~1.5-2 GB. Correct homophones
+   small misses (顕微鏡 vs ケンビキョウ, 取扱説明書), fewer hallucinations ("黒い黒いやつ"
+   filler, "(笑い声)" repeats).
+3. Neither model is perfect on this noisy talk-show fixture: names ("ジョージョちゃん"),
+   some laugh/overlap segments, and occasional repetition ("まだまだまだまだまだ") remain.
+   Those are segmentation/noise issues, not just model size.
+
+### Changes applied
+
+- `desktop/src-tauri/src/session.rs`: `DECODE_WINDOW_SAMPLES` 4 s -> 8 s, overridable via
+  `LIVE_TRANSLATOR_DECODE_WINDOW_SECONDS` (clamped 2-10). `cargo check --all-targets` passes.
+  Caveat: on macOS (Metal, M3) large-v3-turbo was 0.49x realtime with the old 15 s soak
+  window; 8 s is safe for small on macOS but large on macOS needs re-measuring.
+- User machine runtime config (`AppData\Roaming\com.mon3tr.live-translator\asr-settings.json`)
+  switched to `ggml-large-v3-turbo-q5_0.bin` (takes effect next session; revert in the
+  overlay's ASR 模型 dropdown).
+- New example `examples/asr_ab_probe.rs` for future A/B runs.
+
+### Build/run notes
+
+- The 8 s window change needs a repackage to reach the running exe:
+  `powershell -ExecutionPolicy Bypass -File build_cuda.ps1 -Mode tauri` then copy
+  `target\release\live-translator-desktop.exe` over `LiveTranslator.exe` (or run the MSI).
+- The stale `C:\wpt` tauri build cache (which breaks `cargo check` with
+  `failed to read plugin permissions`) was moved to `D:\myapp\target\_stale_tauri_builds\`
+  instead of deleted (the usual `rm -rf target/{debug,release}/build/tauri` still applies
+  later if preferred; both were regenerated during the check).
+
+### Next
+
+- Try the repackaged app with large-v3-turbo + 8 s window on real content; if names/kanji
+  still lag, next levers are (a) punctuation-aware commit instead of pure silence,
+  (b) token-level repetition suppression in display (D019 only skips re-translation),
+  (c) whisper-large-v3 q8_0 (~1.5 GB) for offline accuracy, and (d) prompt-with-committed-
+  text only on high-confidence windows (re-measure the D016 repetition failure first).
+
+### Model shoot-out on full-size large-v3 (2026-08-05, follow-up)
+
+Tested the full-size large-v3 q8_0 (quantized locally from f16) and two more official
+models on the same 180 s of 1.mp4, 8 s window, RTX 3060 Ti CUDA:
+
+| model | size | commits | avg decode | max decode |
+|---|---|---|---|---|
+| large-v3-turbo q5_0 (current) | 547 MB | 59 | 291 ms | 1202 ms |
+| large-v3-turbo q8_0 | 834 MB | 63 | 297 ms | 1689 ms |
+| large-v3 full q5_0 | 1 GB | 57 | 736 ms | 3906 ms |
+| large-v3 full q8_0 | 1.58 GB | 66 | 745 ms | 3889 ms |
+
+Verdict: full-size large-v3 is NOT recommended for live streaming (2.5x slower, 3-4 s max
+spikes, no clear accuracy gain; new errors like 青髪袋/黒色してるわ). turbo q8_0 is a
+quality wash vs turbo q5_0 at identical speed and is now selectable in the UI. Full plan,
+model guide, and evidence paths: `work/optimization-plan.md`.
+
+### CUDA verification + immediate model switch + repackage (2026-08-05)
+
+- **Full-size large-v3 IS using CUDA.** `nvidia-smi` during the full q8_0 probe showed
+  GPU util 6-74% and ~3.7 GB VRAM. The 2.5x slowdown vs turbo is architectural: full
+  large-v3 has 32 decoder layers vs turbo's 4; with beam search the autoregressive
+  decoder dominates. Not a CPU fallback.
+- **Model switch is now immediate in the overlay** (`desktop/src/App.tsx`): the ASR model
+  dropdown is no longer disabled while a session runs; picking a model saves it and, if a
+  session is active, stops it and restarts the same audio source with the new model (no
+  app restart). `startCurrentSource()` was factored out of `toggleRecognition()`.
+- **Dropdown option text was invisible** (white on white in WebView2's native listbox).
+  Fixed in `desktop/src/App.css` with `select option { color:#141414; background:#fff; }`.
+- **turbo q8_0 now appears in the overlay model list** (`AVAILABLE_MODELS` in
+  `desktop/src-tauri/src/asr/settings.rs`).
+- **Repackaged** (this is now the standard step after code changes):
+  - `D:\myapp\live-translator\LiveTranslator.exe` (refreshed from
+    `target\release\live-translator-desktop.exe`)
+  - `D:\myapp\target\release\bundle\msi\Live Translator_0.1.0_x64_en-US.msi`
+  - `D:\myapp\target\release\bundle\nsis\Live Translator_0.1.0_x64-setup.exe`
+  - NSIS toolchain downloads from github.com are flaky on this network; seed the tauri
+    cache manually if `-Mode tauri` times out at the NSIS step: download
+    `nsis-3.11.zip` + `nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll` with curl and extract
+    to `%LOCALAPPDATA%\tauri\NSIS` (plugin into `Plugins\x86-unicode\`).
+- Smoke test: refreshed exe launches and stays alive (~174 MB) with no missing-DLL crash.
+
+### Portable distribution + install guide (2026-08-05)
+
+- Analyzed the runtime dependency graph with dumpbin: the exe directly needs only
+  `cublas64_13.dll` from CUDA (which pulls `cublasLt64_13.dll`; cudart is loaded by the
+  whisper.cpp CUDA backend), plus MSVC runtime (`msvcp140*.dll`, `vcruntime*.dll`) and
+  Windows inbox DLLs (DirectML/d3d12/dxgi are in Win10 1809+). So a portable bundle needs
+  no CUDA Toolkit install, only an NVIDIA driver.
+- `local_mt.rs`: on Windows, the spawned llama-server now gets the application exe's own
+  directory prepended to its PATH (in addition to models\hymt), so it resolves the CUDA
+  runtime DLLs that sit next to LiveTranslator.exe in a portable layout.
+- New `scripts/make_portable.ps1` assembles `dist\LiveTranslator-portable\` (exe + CUDA
+  runtime + VC runtime + models + hymt + optional ffmpeg + launcher + readme) and zips it
+  to `dist\LiveTranslator-portable-v0.1.0.zip` (~2.7 GB). Flags: `-IncludeFfmpeg`,
+  `-IncludeAllModels`.
+- Validated on this machine with CUDA removed from PATH: portable exe launches (DLLs
+  resolve from the exe dir), and the bundled llama-server loads Hy-MT and passes /health
+  in ~1.5 s with only the app dir + models\hymt on PATH. No CUDA Toolkit required.
+- Repackaged after the local_mt.rs change (MSI + NSIS + refreshed LiveTranslator.exe).
+- Detailed Chinese install doc: `work/install-guide.md` (system requirements, portable vs
+  installer tradeoff, first-run steps, FAQ, rebuild instructions, licensing notes).
+- Known limitation: the build is compiled for sm_86 (RTX 30 series); other GPU generations
+  should be recompiled with a different CMAKE_CUDA_ARCHITECTURES (see install guide §11).
+
+### First-run model downloader + lite package (2026-08-05)
+
+- New `desktop/src-tauri/src/models.rs`: on-demand model downloader with progress events
+  (`models:progress` / `models:finished`) and SHA-256 verification. Default mirror
+  hf-mirror.com, override with `LIVE_TRANSLATOR_MODEL_MIRROR`. Two commands:
+  `models_status`, `download_asr_models` (VAD + small + turbo q5_0, ~1 GB),
+  `download_local_mt_model` (Hy-MT, ~1.1 GB). Downloads skip files that already pass the
+  checksum; progress emits every ~200 ms from a background thread (UI stays responsive).
+- `lib.rs`: registered the commands; `model_directory` now prefers (and creates) `models/`
+  next to the executable when writable, falling back to app-data under Program Files.
+- Frontend (`App.tsx` + `App.css`): "模型文件" section in quick-settings shows status
+  (ASR x/2 · VAD 就绪/缺失 · 离线翻译 未下载) with 下载 ASR 模型 / 下载离线翻译 buttons
+  and live progress.
+- `scripts/make_portable.ps1 -Lite`: builds the lite package (no models, app downloads on
+  first run). Lite zip is ~0.43 GB vs ~2.7 GB full.
+- Validation: `examples/models_download_probe.rs` downloaded VAD (885 KB) and small
+  (466 MB) into a scratch dir with progress + checksum OK, and re-ran instantly via the
+  "already-valid" skip. Lite exe launches with CUDA stripped from PATH.
+- Repackaged: refreshed LiveTranslator.exe, rebuilt full + lite portable zips.
+- Docs: `work/install-guide.md` §12-13 (lite flow, mirror env, artifact list).
