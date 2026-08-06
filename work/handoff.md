@@ -509,3 +509,28 @@ model guide, and evidence paths: `work/optimization-plan.md`.
   "already-valid" skip. Lite exe launches with CUDA stripped from PATH.
 - Repackaged: refreshed LiveTranslator.exe, rebuilt full + lite portable zips.
 - Docs: `work/install-guide.md` §12-13 (lite flow, mirror env, artifact list).
+
+### Release v0.1.0 + CI fixes + single-exe installer (2026-08-06)
+
+- Published GitHub Release **v0.1.0** (draft=false):
+  https://github.com/drasnut66/live-translator/releases/tag/v0.1.0
+- Assets (6): `LiveTranslator-lite-setup-v0.1.0.exe` (single-file NSIS installer,
+  405 MB; installs CUDA+VC runtime to %LOCALAPPDATA%\LiveTranslator, downloads models
+  in-app), `LiveTranslator-portable-lite-v0.1.0.zip` (451 MB), CUDA NSIS/MSI built
+  locally (`Live-Translator_0.1.0_x64-setup.exe` / `.msi`), plus CI macos-arm64 dmg +
+  app.tar.gz. Full offline zip omitted (exceeds GitHub 2 GB per-asset limit).
+- Pushed all pending work to main: model downloader, 8 s decode window, portable
+  packaging, docs (install-guide, optimization-plan, handoff, decisions), fmt fixes.
+- **360 security finding**: real-time protection quarantined/deleted the freshly built
+  NSIS installer the moment it was executed (Access denied then file gone); the file
+  survives copy/upload. Users must whitelist the folder or allow "still run". The
+  Tauri app exe itself was not flagged.
+- **CI fixes** (commit 2209bfa):
+  - `desktop/src-tauri/rust-toolchain.toml` now committed (nightly). Stable rustc ICEs
+    (`TryFromIntError(PosOverflow)`) compiling this crate even without the `cuda`
+    feature, so CI must use nightly too (D021 superseded).
+  - ci.yml desktop job + release.yml use `dtolnay/rust-toolchain@nightly`.
+  - release.yml: dropped macos-x64 (speakrs -> ort-sys has no prebuilt onnxruntime for
+    x86_64-apple-darwin); macos-arm64 + windows-x64 remain.
+- New `scripts/make_single_exe.ps1` (NSIS single-file installer; IExpress attempt was
+  abandoned - it hung on silent SED packaging).
