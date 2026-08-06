@@ -16,14 +16,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-x64 is intentionally omitted: speakrs -> ort-sys has no
+          # prebuilt onnxruntime for x86_64-apple-darwin.
           - platform: macos-arm64
             os: macos-latest
             args: --target aarch64-apple-darwin
             target: aarch64-apple-darwin
-          - platform: macos-x64
-            os: macos-latest
-            args: --target x86_64-apple-darwin
-            target: x86_64-apple-darwin
           - platform: windows-x64
             os: windows-latest
     steps:
@@ -33,7 +31,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
         with:
           targets: ${{ matrix.target }}
       - run: npm ci
