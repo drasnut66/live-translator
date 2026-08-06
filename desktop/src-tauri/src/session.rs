@@ -34,9 +34,22 @@ const VAD_INITIAL_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize / 2;
 const VAD_STEP_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize / 4;
 // Decode only the most recent window so a rolling multi-speaker buffer does not
 // grow indefinitely (slow beam search, one speaker's laughter dominating the
-// whole decode, repeated re-translation of the same segment).
-const DECODE_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 4;
+// whole decode, repeated re-translation of the same segment). Measured on the
+// bundled fixture with CUDA (RTX 3060 Ti): 4 s truncates long Japanese
+// utterances mid-sentence and loses ~1/3 of committed subtitle content; 8 s
+// recovers it at ~60-100 ms extra average decode, still comfortably realtime
+// for both whisper-small and large-v3-turbo. Override with
+// LIVE_TRANSLATOR_DECODE_WINDOW_SECONDS (clamped 2-10).
 const MAXIMUM_WINDOW_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * 10;
+
+fn decode_window_samples() -> usize {
+    std::env::var("LIVE_TRANSLATOR_DECODE_WINDOW_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .map(|seconds| seconds.clamp(2, 10))
+        .unwrap_or(8)
+        * WHISPER_SAMPLE_RATE as usize
+}
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -521,10 +534,10 @@ fn decode_and_emit(
     speaker: Option<&SpeakerWorker>,
 ) -> Result<Vec<TokenPiece>, String> {
     let decode_started = Instant::now();
-    // Decode only the most recent DECODE_WINDOW_SAMPLES so a long rolling
-    // segment (e.g. sustained laughter between speakers) does not dominate the
+    // Decode only the most recent decode window so a long rolling segment
+    // (e.g. sustained laughter between speakers) does not dominate the
     // hypothesis or slow beam search.
-    let decode_start = audio.len().saturating_sub(DECODE_WINDOW_SAMPLES);
+    let decode_start = audio.len().saturating_sub(decode_window_samples());
     let window = &audio[decode_start..];
     let hypothesis = engine
         .transcribe(window)

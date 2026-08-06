@@ -91,6 +91,26 @@ type SpeakerAssignment = {
   speakerId: number;
 };
 
+type ModelStatus = {
+  file: string;
+  group: "vad" | "asr" | "mt";
+  present: boolean;
+  valid: boolean;
+  sizeHint: number;
+};
+
+type ModelProgressPayload = {
+  file: string;
+  received: number;
+  total: number | null;
+  phase: string;
+};
+
+type ModelFinishedPayload = {
+  success: boolean;
+  message: string;
+};
+
 const fallbackSnapshot: SubtitleSnapshot = {
   stableJa: "パスタっていろんな味にできるし、",
   unstableJa: "よくない？",
@@ -141,6 +161,8 @@ function App() {
   const [asrModel, setAsrModel] = useState("");
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [asrSettingsStatus, setAsrSettingsStatus] = useState("");
+  const [modelStatus, setModelStatus] = useState("模型状态加载中...");
+  const [downloading, setDownloading] = useState(false);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([
     {
@@ -196,6 +218,7 @@ function App() {
       .then((settings) => {
         setAsrModel(settings.model ?? "");
         setAvailableModels(settings.availableModels);
+        void refreshModelStatus();
       })
       .catch(() => {
         // Browser preview has no settings bridge.
@@ -268,6 +291,19 @@ function App() {
                 : entry
             )));
           }),
+          listen<ModelProgressPayload>("models:progress", ({ payload }) => {
+            setDownloading(true);
+            const total = payload.total;
+            const pct = total && total > 0 ? Math.round((payload.received / total) * 100) : null;
+            setModelStatus(pct === null
+              ? `正在下载 ${payload.file} ...`
+              : `正在下载 ${payload.file} ${pct}%`);
+          }),
+          listen<ModelFinishedPayload>("models:finished", ({ payload }) => {
+            setDownloading(false);
+            setModelStatus(payload.success ? payload.message : `下载失败：${payload.message}`);
+            void refreshModelStatus();
+          }),
         ]);
 
         if (disposed) {
@@ -289,6 +325,22 @@ function App() {
 
   const ready = status.modelReady && status.vadReady && status.whisperReady;
 
+  async function startCurrentSource() {
+    if (source === "browser") {
+      await invoke("start_browser_session");
+    } else if (source === "microphone") {
+      await invoke("start_microphone_session", {
+        deviceId: microphoneId || null,
+      });
+    } else if (source === "system") {
+      await invoke("start_system_audio_session", {
+        deviceId: systemAudioDeviceId || null,
+      });
+    } else {
+      throw new Error("当前阶段尚未接入该音频来源");
+    }
+  }
+
   async function toggleRecognition() {
     setSessionMessage("");
     try {
@@ -296,19 +348,7 @@ function App() {
         await invoke("stop_session");
         return;
       }
-      if (source === "browser") {
-        await invoke("start_browser_session");
-      } else if (source === "microphone") {
-        await invoke("start_microphone_session", {
-          deviceId: microphoneId || null,
-        });
-      } else if (source === "system") {
-        await invoke("start_system_audio_session", {
-          deviceId: systemAudioDeviceId || null,
-        });
-      } else {
-        throw new Error("当前阶段尚未接入该音频来源");
-      }
+      await startCurrentSource();
     } catch (error) {
       setRunning(false);
       setSessionState("error");
@@ -381,6 +421,46 @@ function App() {
       return next;
     });
     setTranslationSettingsStatus("");
+  }
+
+  async function refreshModelStatus() {
+    try {
+      const items = await invoke<ModelStatus[]>("models_status");
+      const vad = items.find((item) => item.group === "vad");
+      const asr = items.filter((item) => item.group === "asr");
+      const mt = items.find((item) => item.group === "mt");
+      const asrReady = asr.filter((item) => item.valid).length;
+      const parts = [
+        `ASR ${asrReady}/${asr.length}`,
+        vad?.valid ? "VAD 就绪" : "VAD 缺失",
+        mt?.valid ? "离线翻译 就绪" : "离线翻译 未下载",
+      ];
+      setModelStatus(parts.join(" · "));
+    } catch {
+      setModelStatus("无法获取模型状态");
+    }
+  }
+
+  async function downloadAsrModels() {
+    setModelStatus("开始下载 ASR 模型（约 1 GB）...");
+    try {
+      await invoke("download_asr_models");
+      setDownloading(true);
+    } catch (error) {
+      setDownloading(false);
+      setModelStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function downloadLocalMt() {
+    setModelStatus("开始下载离线翻译模型（约 1.1 GB）...");
+    try {
+      await invoke("download_local_mt_model");
+      setDownloading(true);
+    } catch (error) {
+      setDownloading(false);
+      setModelStatus(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function minimizeWindow() {
@@ -557,20 +637,28 @@ function App() {
             <select
               aria-label="ASR 模型"
               value={asrModel}
-              disabled={running}
               onChange={(event) => {
-                setAsrSettingsStatus("");
                 const next = event.target.value;
-                void invoke<{ model: string | null; availableModels: string[] }>("set_asr_model", {
-                  model: next,
-                })
-                  .then((settings) => {
+                if (!next) return;
+                setAsrSettingsStatus("");
+                void (async () => {
+                  try {
+                    const settings = await invoke<{ model: string | null; availableModels: string[] }>("set_asr_model", {
+                      model: next,
+                    });
                     setAsrModel(settings.model ?? "");
-                    setAsrSettingsStatus("模型已保存，重启会话生效");
-                  })
-                  .catch((error) => {
+                    if (running) {
+                      // 正在识别：用新模型立刻重启同一音源，无需重启 App。
+                      await invoke("stop_session");
+                      await startCurrentSource();
+                      setAsrSettingsStatus("模型已切换，正在用新模型重新识别");
+                    } else {
+                      setAsrSettingsStatus("模型已保存，开始识别时生效");
+                    }
+                  } catch (error) {
                     setAsrSettingsStatus(error instanceof Error ? error.message : String(error));
-                  });
+                  }
+                })();
               }}
             >
               {availableModels.length === 0 && <option value="">加载中...</option>}
@@ -581,6 +669,11 @@ function App() {
               ))}
             </select>
           </label>
+          <div className="model-actions">
+            <span className="model-status" role="status" aria-live="polite">{modelStatus}</span>
+            <button type="button" className="mini-button" disabled={downloading} onClick={() => void downloadAsrModels()}>下载 ASR 模型</button>
+            <button type="button" className="mini-button" disabled={downloading} onClick={() => void downloadLocalMt()}>下载离线翻译</button>
+          </div>
           <span className="translation-settings-status" role="status" aria-live="polite">
             {asrSettingsStatus}
           </span>

@@ -31,6 +31,28 @@ Get-VerifiedModel `
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin" `
     (Join-Path $modelDir "ggml-large-v3-turbo-q5_0.bin") `
     "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"
+# Optional higher-fidelity Whisper models (larger downloads; not required).
+# - ggml-large-v3-turbo-q8_0.bin: turbo at q8_0, ~834 MB. Slightly more
+#   faithful than q5_0 at the same streaming speed (measured: avg decode
+#   297 ms vs 291 ms at an 8 s window on RTX 3060 Ti; quality is a wash).
+# - ggml-large-v3-q5_0.bin: full-size large-v3 at q5_0, ~1 GB. More accurate
+#   offline, but ~2.5x slower per decode with 3-4 s spikes; NOT recommended
+#   for live streaming.
+# - ggml-large-v3.bin: full-size f16, ~3 GB. Convert to q8_0 yourself with
+#   whisper.cpp's whisper-quantize (see work/optimization-plan.md), because
+#   the official repo does not ship full-size q8_0.
+Get-VerifiedModel `
+    "$base/ggml-large-v3-turbo-q8_0.bin" `
+    (Join-Path $modelDir "ggml-large-v3-turbo-q8_0.bin") `
+    "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1"
+Get-VerifiedModel `
+    "$base/ggml-large-v3-q5_0.bin" `
+    (Join-Path $modelDir "ggml-large-v3-q5_0.bin") `
+    "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1"
+Get-VerifiedModel `
+    "$base/ggml-large-v3.bin" `
+    (Join-Path $modelDir "ggml-large-v3.bin") `
+    "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
 
 Get-VerifiedModel `
     "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin" `

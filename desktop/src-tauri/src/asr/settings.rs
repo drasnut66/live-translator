@@ -7,9 +7,10 @@ use tauri::{AppHandle, Manager};
 const ASR_SETTINGS_FILE: &str = "asr-settings.json";
 const DEFAULT_MODEL_FILE: &str = "ggml-small.bin";
 
-pub const AVAILABLE_MODELS: [&str; 3] = [
+pub const AVAILABLE_MODELS: [&str; 4] = [
     "ggml-small.bin",
     "ggml-large-v3-turbo-q5_0.bin",
+    "ggml-large-v3-turbo-q8_0.bin",
     "ggml-base.bin",
 ];
 

@@ -160,15 +160,28 @@ fn spawn_server(server_path: &Path, model_path: &Path, port: u16) -> Result<Chil
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
+        // The CUDA runtime DLLs (cublas64_13, cublasLt64_13, cudart64_13)
+        // live next to the application exe in a portable layout; add both the
+        // server's own directory and the app directory to the child's PATH so
+        // llama-server can resolve them without a CUDA Toolkit install.
+        let mut dirs = Vec::new();
         if let Some(dir) = server_path.parent() {
-            command.env(
-                "PATH",
-                format!(
-                    "{};{}",
-                    dir.display(),
-                    std::env::var("PATH").unwrap_or_default()
-                ),
-            );
+            dirs.push(dir.display().to_string());
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                dirs.push(dir.display().to_string());
+            }
+        }
+        if !dirs.is_empty() {
+            let mut new_path = dirs.join(";");
+            if let Ok(existing) = std::env::var("PATH") {
+                if !existing.is_empty() {
+                    new_path.push(';');
+                    new_path.push_str(&existing);
+                }
+            }
+            command.env("PATH", new_path);
         }
     }
     let child = command

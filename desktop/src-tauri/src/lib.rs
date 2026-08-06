@@ -6,6 +6,7 @@ use tauri::Manager;
 pub mod asr;
 pub mod audio;
 pub mod local_mt;
+pub mod models;
 pub mod session;
 pub mod speaker;
 pub mod translation;
@@ -45,12 +46,13 @@ fn model_directory(app: &tauri::AppHandle) -> PathBuf {
         return project_path("models");
     }
 
-    // Packaged builds look for a `models/` directory next to the executable,
-    // so the app stays small and models are kept external.
+    // Portable/standalone builds prefer a `models/` directory next to the
+    // executable (the first-run downloader writes there). When the folder is
+    // not writable (e.g. installed under Program Files), fall back to app data.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
             let adjacent = parent.join("models");
-            if adjacent.is_dir() {
+            if adjacent.is_dir() || std::fs::create_dir_all(&adjacent).is_ok() {
                 return adjacent;
             }
         }
@@ -155,7 +157,10 @@ pub fn run() {
             session::start_system_audio_session,
             session::start_browser_session,
             session::start_test_session,
-            session::stop_session
+            session::stop_session,
+            models::models_status,
+            models::download_asr_models,
+            models::download_local_mt_model
         ])
         .build(tauri::generate_context!())
         .expect("error while building Tauri application")

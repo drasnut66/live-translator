@@ -2737,6 +2737,7 @@ dependencies = [
  "screencapturekit",
  "serde",
  "serde_json",
+ "sha2",
  "speakrs",
  "tauri",
  "tauri-build",

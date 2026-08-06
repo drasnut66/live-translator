@@ -444,3 +444,47 @@ select:disabled {
     width: 58px;
   }
 }
+
+/* WebView2 renders the native dropdown listbox with a light background, but
+   the overlay select text is light, so options appear white-on-white until
+   hovered. Give every option an explicit dark-on-light palette. */
+select option {
+  color: #141414;
+  background: #ffffff;
+}
+
+/* First-run model downloader UI */
+.model-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.model-status {
+  font-size: 11px;
+  color: #c9d1d9;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.mini-button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f5f0;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mini-button:hover:not(:disabled) {
+  background: rgba(109, 214, 203, 0.16);
+  border-color: rgba(109, 214, 203, 0.5);
+}
+
+.mini-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
