@@ -175,8 +175,8 @@ pub fn download_spec(
     }
     let total = response.content_length();
     let tmp = path.with_extension("part");
-    let mut file = fs::File::create(&tmp)
-        .map_err(|error| format!("create {}: {error}", tmp.display()))?;
+    let mut file =
+        fs::File::create(&tmp).map_err(|error| format!("create {}: {error}", tmp.display()))?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 65536];
     let mut received: u64 = 0;
@@ -215,7 +215,13 @@ pub fn download_spec(
 static ASR_DOWNLOADING: AtomicBool = AtomicBool::new(false);
 static MT_DOWNLOADING: AtomicBool = AtomicBool::new(false);
 
-fn emit_progress(app: &AppHandle, spec: &ModelSpec, received: u64, total: Option<u64>, phase: &str) {
+fn emit_progress(
+    app: &AppHandle,
+    spec: &ModelSpec,
+    received: u64,
+    total: Option<u64>,
+    phase: &str,
+) {
     let _ = app.emit(
         MODEL_PROGRESS_EVENT,
         ModelProgressPayload {
@@ -228,7 +234,10 @@ fn emit_progress(app: &AppHandle, spec: &ModelSpec, received: u64, total: Option
 }
 
 fn emit_finished(app: &AppHandle, success: bool, message: String) {
-    let _ = app.emit(MODEL_FINISHED_EVENT, ModelFinishedPayload { success, message });
+    let _ = app.emit(
+        MODEL_FINISHED_EVENT,
+        ModelFinishedPayload { success, message },
+    );
 }
 
 #[tauri::command]

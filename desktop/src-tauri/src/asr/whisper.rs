@@ -106,9 +106,11 @@ impl WhisperEngine {
         // snowball into repeated output (measured on large-v3-turbo: seg=6
         // grew "ごめんなさい" indefinitely). Set LIVE_TRANSLATOR_NO_CONTEXT=0
         // to restore cross-window context.
-        params.set_no_context(std::env::var_os("LIVE_TRANSLATOR_NO_CONTEXT")
-            .map(|value| value != "0")
-            .unwrap_or(true));
+        params.set_no_context(
+            std::env::var_os("LIVE_TRANSLATOR_NO_CONTEXT")
+                .map(|value| value != "0")
+                .unwrap_or(true),
+        );
         params.set_single_segment(false);
         params.set_print_special(false);
         params.set_print_progress(false);

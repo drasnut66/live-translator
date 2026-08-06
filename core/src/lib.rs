@@ -297,9 +297,11 @@ fn pieces_to_text(pieces: &[TokenPiece]) -> String {
 /// first commit of a segment is always translated.
 fn is_repetition_run(appended: &[TokenPiece], committed: &[TokenPiece]) -> bool {
     !committed.is_empty()
-        && appended
-            .iter()
-            .all(|appended| committed.iter().any(|committed| committed.id == appended.id))
+        && appended.iter().all(|appended| {
+            committed
+                .iter()
+                .any(|committed| committed.id == appended.id)
+        })
 }
 
 #[cfg(test)]
