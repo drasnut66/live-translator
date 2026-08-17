@@ -34,7 +34,7 @@ sha2 = "0.10"
 keyring = "=4.1.6"
 live-translator-core = { path = "../../core" }
 cpal = "=0.18.1"
-rubato = "=0.16.2"
+rubato = "=5.0.0"
 tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
 # speakrs builds everywhere (ONNX CPU path); macOS adds the coreml feature below.
 speakrs = { git = "https://github.com/avencera/speakrs.git" }
