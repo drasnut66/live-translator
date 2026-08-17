@@ -45,7 +45,7 @@ screencapturekit = { version = "=8.0.1", features = ["macos_13_0"] }
 speakrs = { git = "https://github.com/avencera/speakrs.git", features = ["coreml"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-wasapi = "=0.23.0"
+wasapi = "=0.24.0"
 whisper-rs = { version = "=0.16.0" }
 
 [target.'cfg(all(not(target_os = "macos"), not(target_os = "windows")))'.dependencies]
